@@ -1,0 +1,72 @@
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
+import { Booking, BookingDocument } from './schemas/booking.schema';
+
+@Injectable()
+export class BookingsService {
+  constructor(@InjectModel(Booking.name) private bookingModel: Model<BookingDocument>) {}
+
+  async create(data: any): Promise<BookingDocument> {
+    return new this.bookingModel(data).save();
+  }
+
+  async findAll(): Promise<BookingDocument[]> {
+    return this.bookingModel
+      .find()
+      .populate('apartmentId', 'internalName status')
+      .sort({ 'stay.checkIn': -1 });
+  }
+
+  async findById(id: string): Promise<BookingDocument> {
+    const booking = await this.bookingModel
+      .findById(id)
+      .populate('apartmentId', 'internalName status');
+    if (!booking) throw new NotFoundException('Reserva no encontrada');
+    return booking;
+  }
+
+  async update(id: string, data: any): Promise<BookingDocument> {
+    const booking = await this.bookingModel.findByIdAndUpdate(id, data, { new: true });
+    if (!booking) throw new NotFoundException('Reserva no encontrada');
+    return booking;
+  }
+
+  // Registra un pago parcial o total
+  async registerPayment(id: string, amount: number): Promise<BookingDocument> {
+    const booking = await this.bookingModel.findById(id);
+    if (!booking) throw new NotFoundException('Reserva no encontrada');
+
+    booking.billing.amountReceived += amount;
+
+    if (booking.billing.amountReceived >= booking.billing.totalAmount) {
+      booking.billing.status = 'PAGADO';
+      booking.billing.amountReceived = booking.billing.totalAmount; // cap
+    }
+
+    return booking.save();
+  }
+
+  // Resumen financiero: total esperado, recibido y pendiente
+  async financialSummary() {
+    const result = await this.bookingModel.aggregate([
+      { $match: { 'billing.status': { $ne: 'NO SHOW' } } },
+      {
+        $group: {
+          _id: null,
+          totalExpected: { $sum: '$billing.totalAmount' },
+          totalReceived: { $sum: '$billing.amountReceived' },
+        },
+      },
+      {
+        $project: {
+          _id: 0,
+          totalExpected: 1,
+          totalReceived: 1,
+          totalPending: { $subtract: ['$totalExpected', '$totalReceived'] },
+        },
+      },
+    ]);
+    return result[0] ?? { totalExpected: 0, totalReceived: 0, totalPending: 0 };
+  }
+}
