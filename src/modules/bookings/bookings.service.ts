@@ -48,9 +48,10 @@ export class BookingsService {
   }
 
   async update(id: string, data: any): Promise<BookingDocument> {
-    const booking = await this.bookingModel.findByIdAndUpdate(id, data, { new: true });
+    const booking = await this.bookingModel.findById(id);
     if (!booking) throw new NotFoundException('Reserva no encontrada');
-    return booking;
+    booking.set(data);
+    return booking.save();
   }
 
   // Registra un pago parcial o total

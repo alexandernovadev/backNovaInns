@@ -3,25 +3,27 @@ import { HydratedDocument, Types } from 'mongoose';
 
 export type BookingDocument = HydratedDocument<Booking>;
 
-const IdentificationSourceSchema = {
-  url: { type: String, required: true },
-  type: { type: String, enum: ['FRONT', 'BACK', 'SELFIE'], required: true },
+const identificationDef = {
+  _id: false,
+  url:        { type: String, required: true },
+  type:       { type: String, enum: ['FRONT', 'BACK', 'SELFIE'], required: true },
   uploadedAt: { type: Date, default: Date.now },
 };
 
-const GuestSchema = {
-  fullName: { type: String, required: true },
-  idNumber: { type: String, default: '' },
-  country:  { type: String, default: '' },
-  city:     { type: String, default: '' },
-  identifications: { type: [IdentificationSourceSchema], default: [] },
+const guestDef = {
+  _id:             false,
+  fullName:        { type: String, required: true },
+  idNumber:        { type: String, default: '' },
+  country:         { type: String, default: '' },
+  city:            { type: String, default: '' },
+  identifications: { type: [identificationDef], default: [] },
 };
 
-const ExtraServiceSchema = {
-  type: { type: String, enum: ['CAR', 'MOTORCYCLE', 'OTHER'], required: true },
+const extraServiceDef = {
+  type:        { type: String, enum: ['CAR', 'MOTORCYCLE', 'OTHER'], required: true },
   description: { type: String, default: '' },
-  quantity: { type: Number, default: 1 },
-  price: { type: Number, required: true },
+  quantity:    { type: Number, default: 1 },
+  price:       { type: Number, required: true },
 };
 
 @Schema({ timestamps: true })
@@ -31,8 +33,8 @@ export class Booking {
 
   @Prop({
     type: {
-      host: { type: GuestSchema, required: true },
-      members: { type: [GuestSchema], default: [] },
+      host:    { type: guestDef,    required: true },
+      members: { type: [guestDef],  default: [] },
     },
     required: true,
     _id: false,
@@ -41,7 +43,7 @@ export class Booking {
 
   @Prop({
     type: {
-      checkIn: { type: Date, required: true },
+      checkIn:  { type: Date, required: true },
       checkOut: { type: Date, required: true },
     },
     required: true,
@@ -51,13 +53,13 @@ export class Booking {
 
   @Prop({
     type: {
-      basePrice: { type: Number, required: true },
-      extraServices: { type: [ExtraServiceSchema], default: [] },
-      totalAmount: { type: Number, required: true },
+      basePrice:      { type: Number, required: true },
+      extraServices:  { type: [extraServiceDef], default: [] },
+      totalAmount:    { type: Number, required: true },
       amountReceived: { type: Number, default: 0 },
-      platform: { type: String, enum: ['Booking', 'AirBnB', 'Directo'], required: true },
-      paymentMethod: { type: String, enum: ['Efectivo', 'Nequi', 'Bancolombia', 'None'], default: 'None' },
-      status: { type: String, enum: ['PAGADO', 'FALTA PAGO', 'NO SHOW'], default: 'FALTA PAGO' },
+      platform:       { type: String, enum: ['Booking', 'AirBnB', 'Directo'], required: true },
+      paymentMethod:  { type: String, enum: ['Efectivo', 'Nequi', 'Bancolombia', 'None'], default: 'None' },
+      status:         { type: String, enum: ['PAGADO', 'FALTA PAGO', 'NO SHOW'], default: 'FALTA PAGO' },
     },
     required: true,
     _id: false,
@@ -78,7 +80,6 @@ export class Booking {
 
 export const BookingSchema = SchemaFactory.createForClass(Booking);
 
-// Virtual: cuánto falta por recibir
 BookingSchema.virtual('billing.pendingAmount').get(function () {
   return this.billing.totalAmount - this.billing.amountReceived;
 });
