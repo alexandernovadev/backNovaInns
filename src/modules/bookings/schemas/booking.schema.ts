@@ -11,6 +11,9 @@ const IdentificationSourceSchema = {
 
 const GuestSchema = {
   fullName: { type: String, required: true },
+  idNumber: { type: String, default: '' },
+  country:  { type: String, default: '' },
+  city:     { type: String, default: '' },
   identifications: { type: [IdentificationSourceSchema], default: [] },
 };
 

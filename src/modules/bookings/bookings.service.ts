@@ -11,11 +11,32 @@ export class BookingsService {
     return new this.bookingModel(data).save();
   }
 
-  async findAll(): Promise<BookingDocument[]> {
-    return this.bookingModel
-      .find()
+  async findAll(query: {
+    search?: string;
+    status?: string;
+    platform?: string;
+    page?: number;
+    limit?: number;
+  } = {}) {
+    const { search, status, platform, page = 1, limit = 20 } = query;
+    const filter: Record<string, any> = {};
+
+    if (search)   filter['group.host.fullName'] = { $regex: search, $options: 'i' };
+    if (status)   filter['billing.status'] = status;
+    if (platform) filter['billing.platform'] = platform;
+
+    const total = await this.bookingModel.countDocuments(filter);
+    const data  = await this.bookingModel
+      .find(filter)
       .populate('apartmentId', 'internalName status')
-      .sort({ 'stay.checkIn': -1 });
+      .sort({ 'stay.checkIn': -1 })
+      .skip((page - 1) * limit)
+      .limit(limit);
+
+    return {
+      data,
+      meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
+    };
   }
 
   async findById(id: string): Promise<BookingDocument> {
