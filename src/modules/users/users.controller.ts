@@ -1,6 +1,8 @@
-import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
+import { UpdateUserDto } from './dto/update-user.dto';
+import { QueryUserDto } from './dto/query-user.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @UseGuards(JwtAuthGuard)
@@ -14,13 +16,24 @@ export class UsersController {
   }
 
   @Get()
-  findAll() {
-    return this.usersService.findAll();
+  findAll(@Query() query: QueryUserDto) {
+    return this.usersService.findAll(query);
   }
 
   @Get(':id')
   findById(@Param('id') id: string) {
     return this.usersService.findById(id);
+  }
+
+  @Patch(':id')
+  update(@Param('id') id: string, @Body() dto: UpdateUserDto) {
+    return this.usersService.update(id, dto);
+  }
+
+  @Delete(':id')
+  @HttpCode(204)
+  remove(@Param('id') id: string) {
+    return this.usersService.remove(id);
   }
 
   @Patch(':id/toggle-active')
