@@ -7,6 +7,7 @@ import { ApartmentsModule } from './modules/apartments/apartments.module';
 import { BookingsModule } from './modules/bookings/bookings.module';
 import { SeedModule } from './modules/seed/seed.module';
 import { UploadModule } from './modules/upload/upload.module';
+import { DataModule } from './modules/data/data.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { UploadModule } from './modules/upload/upload.module';
     BookingsModule,
     SeedModule,
     UploadModule,
+    DataModule,
   ],
 })
 export class AppModule {}

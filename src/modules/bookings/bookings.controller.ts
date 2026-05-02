@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { BookingsService } from './bookings.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
@@ -35,5 +35,10 @@ export class BookingsController {
   @Patch(':id/payment')
   registerPayment(@Param('id') id: string, @Body('amount') amount: number) {
     return this.bookingsService.registerPayment(id, amount);
+  }
+
+  @Delete(':id')
+  remove(@Param('id') id: string) {
+    return this.bookingsService.remove(id);
   }
 }

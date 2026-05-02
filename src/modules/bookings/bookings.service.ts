@@ -54,6 +54,11 @@ export class BookingsService {
   }
 
   // Registra un pago parcial o total
+  async remove(id: string): Promise<void> {
+    const result = await this.bookingModel.findByIdAndDelete(id);
+    if (!result) throw new NotFoundException('Reserva no encontrada');
+  }
+
   async registerPayment(id: string, amount: number): Promise<BookingDocument> {
     const booking = await this.bookingModel.findById(id);
     if (!booking) throw new NotFoundException('Reserva no encontrada');
