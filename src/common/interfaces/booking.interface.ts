@@ -7,6 +7,7 @@ export interface IIdentificationSource {
 export interface IGuest {
   fullName: string;
   idNumber: string;
+  birthDate?: string;
   country:  string;
   city:     string;
   identifications: IIdentificationSource[];

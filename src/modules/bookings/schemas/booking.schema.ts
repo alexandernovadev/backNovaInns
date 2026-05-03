@@ -15,6 +15,7 @@ const guestDef = {
   _id:             false,
   fullName:        { type: String, required: true },
   idNumber:        { type: String, default: '' },
+  birthDate:       { type: String, default: undefined },
   country:         { type: String, default: '' },
   city:            { type: String, default: '' },
   identifications: { type: [identificationDef], default: [] },

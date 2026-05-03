@@ -46,7 +46,7 @@ export class ApartmentsService {
   }
 
   async update(id: string, data: Partial<Apartment>): Promise<ApartmentDocument> {
-    const apt = await this.model.findByIdAndUpdate(id, data, { new: true });
+    const apt = await this.model.findByIdAndUpdate(id, data, { returnDocument: 'after' });
     if (!apt) throw new NotFoundException('Apartamento no encontrado');
     return apt;
   }

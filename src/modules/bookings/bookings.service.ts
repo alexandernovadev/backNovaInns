@@ -48,7 +48,7 @@ export class BookingsService {
   }
 
   async update(id: string, data: any): Promise<BookingDocument> {
-    const booking = await this.bookingModel.findByIdAndUpdate(id, { $set: data }, { new: true });
+    const booking = await this.bookingModel.findByIdAndUpdate(id, { $set: data }, { returnDocument: 'after' });
     if (!booking) throw new NotFoundException('Reserva no encontrada');
     return booking;
   }
