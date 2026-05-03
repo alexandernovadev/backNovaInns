@@ -4,10 +4,11 @@ import { HydratedDocument, Types } from 'mongoose';
 export type BookingDocument = HydratedDocument<Booking>;
 
 const identificationDef = {
-  _id: false,
-  url:        { type: String, required: true },
-  type:       { type: String, enum: ['FRONT', 'BACK', 'SELFIE'], required: true },
-  uploadedAt: { type: Date, default: Date.now },
+  _id:       false,
+  url:       { type: String, required: true },
+  publicId:  { type: String, default: '' },
+  type:      { type: String, enum: ['FRONT', 'BACK', 'SELFIE'], required: true },
+  uploadedAt:{ type: Date, default: Date.now },
 };
 
 const guestDef = {
