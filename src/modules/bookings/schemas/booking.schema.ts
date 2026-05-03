@@ -11,13 +11,20 @@ const identificationDef = {
   uploadedAt:{ type: Date, default: Date.now },
 };
 
+const locationDef = {
+  _id:         false,
+  countryCode: { type: String, default: '' },
+  countryName: { type: String, default: '' },
+  department:  { type: String, default: '' },
+  city:        { type: String, default: '' },
+};
+
 const guestDef = {
   _id:             false,
   fullName:        { type: String, required: true },
   idNumber:        { type: String, default: '' },
   birthDate:       { type: String, default: undefined },
-  country:         { type: String, default: '' },
-  city:            { type: String, default: '' },
+  location:        { type: locationDef, default: undefined },
   identifications: { type: [identificationDef], default: [] },
 };
 

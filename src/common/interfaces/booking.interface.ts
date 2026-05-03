@@ -8,8 +8,12 @@ export interface IGuest {
   fullName: string;
   idNumber: string;
   birthDate?: string;
-  country:  string;
-  city:     string;
+  location?: {
+    countryCode: string;
+    countryName: string;
+    department: string;
+    city: string;
+  };
   identifications: IIdentificationSource[];
 }
 
