@@ -10,6 +10,7 @@ import { BookingsModule } from './modules/bookings/bookings.module';
 import { SeedModule } from './modules/seed/seed.module';
 import { UploadModule } from './modules/upload/upload.module';
 import { DataModule } from './modules/data/data.module';
+import { AnalyticsModule } from './modules/analytics/analytics.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { DataModule } from './modules/data/data.module';
     SeedModule,
     UploadModule,
     DataModule,
+    AnalyticsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
