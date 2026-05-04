@@ -2,7 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import * as bcrypt from 'bcryptjs';
-import { User, UserDocument } from '../users/schemas/user.schema';
+import { User, UserDocument } from '../users';
+import { Role, Language } from '../../shared/enums';
 
 @Injectable()
 export class SeedService {
@@ -15,10 +16,10 @@ export class SeedService {
     const passwordHash = await bcrypt.hash('nova1234', 10);
 
     await this.userModel.create({
-      auth: { email: 'admin@novainns.com', passwordHash, role: 'SUPER_ADMIN' },
+      auth: { email: 'admin@novainns.com', passwordHash, role: Role.SUPER_ADMIN },
       profile: { fullName: 'Admin Nova', phone: '3001234567' },
       workContext: { assignedApartments: [], isActive: true },
-      preferences: { language: 'es', notificationsEnabled: true },
+      preferences: { language: Language.ES, notificationsEnabled: true },
     });
 
     return {

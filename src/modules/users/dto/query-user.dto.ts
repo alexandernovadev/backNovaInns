@@ -1,18 +1,19 @@
 import { IsEnum, IsOptional, IsString, IsInt, Min } from 'class-validator';
 import { Type } from 'class-transformer';
+import { Role } from '../../../shared/enums';
 
 export class QueryUserDto {
   @IsString()
   @IsOptional()
-  search?: string; // busca en fullName y email
+  search?: string;
 
-  @IsEnum(['SUPER_ADMIN', 'ADMIN', 'STAFF', 'GUEST'])
+  @IsEnum(Role)
   @IsOptional()
   role?: string;
 
   @IsEnum(['true', 'false'])
   @IsOptional()
-  isActive?: string; // viene como string desde query param
+  isActive?: string;
 
   @Type(() => Number)
   @IsInt()

@@ -4,7 +4,8 @@ import {
 } from '@nestjs/common';
 import { ApartmentsService } from './apartments.service';
 import type { ApartmentQuery } from './apartments.service';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { JwtAuthGuard } from '../auth';
+import { ApartmentStatus } from '../../shared/enums';
 
 @UseGuards(JwtAuthGuard)
 @Controller('apartments')
@@ -32,7 +33,7 @@ export class ApartmentsController {
   }
 
   @Patch(':id/status')
-  setStatus(@Param('id') id: string, @Body('status') status: 'ACTIVE' | 'MAINTENANCE' | 'INACTIVE') {
+  setStatus(@Param('id') id: string, @Body('status') status: ApartmentStatus) {
     return this.svc.setStatus(id, status);
   }
 

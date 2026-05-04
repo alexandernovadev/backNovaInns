@@ -1,4 +1,5 @@
 import { IsEnum, IsString, IsOptional, IsBoolean } from 'class-validator';
+import { Role, Language } from '../../../shared/enums';
 
 export class UpdateUserDto {
   @IsString()
@@ -13,13 +14,13 @@ export class UpdateUserDto {
   @IsOptional()
   identificationNumber?: string;
 
-  @IsEnum(['SUPER_ADMIN', 'ADMIN', 'STAFF', 'GUEST'])
+  @IsEnum(Role)
   @IsOptional()
-  role?: 'SUPER_ADMIN' | 'ADMIN' | 'STAFF' | 'GUEST';
+  role?: Role;
 
-  @IsEnum(['es', 'pt', 'en'])
+  @IsEnum(Language)
   @IsOptional()
-  language?: 'es' | 'pt' | 'en';
+  language?: Language;
 
   @IsBoolean()
   @IsOptional()

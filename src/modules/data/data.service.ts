@@ -1,8 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import { Booking, BookingDocument } from '../bookings/schemas/booking.schema';
-import { Apartment, ApartmentDocument } from '../apartments/schemas/apartment.schema';
+import { Booking, BookingDocument } from '../bookings';
+import { Apartment, ApartmentDocument } from '../apartments';
 
 @Injectable()
 export class DataService {
@@ -21,17 +21,17 @@ export class DataService {
   }
 
   // ── IMPORT ──────────────────────────────────────────────
-  async importBookings(records: any[]): Promise<{ inserted: number; updated: number }> {
+  private async importRecords<T>(model: Model<T>, records: any[]): Promise<{ inserted: number; updated: number }> {
     let inserted = 0;
     let updated  = 0;
 
     for (const record of records) {
       const { _id, __v, createdAt, updatedAt, ...data } = record;
       if (_id) {
-        const res = await this.bookingModel.updateOne({ _id }, { $set: data }, { upsert: true });
+        const res = await model.updateOne({ _id }, { $set: data }, { upsert: true });
         res.upsertedCount ? inserted++ : updated++;
       } else {
-        await new this.bookingModel(data).save();
+        await new model(data).save();
         inserted++;
       }
     }
@@ -39,21 +39,11 @@ export class DataService {
     return { inserted, updated };
   }
 
+  async importBookings(records: any[]): Promise<{ inserted: number; updated: number }> {
+    return this.importRecords(this.bookingModel, records);
+  }
+
   async importApartments(records: any[]): Promise<{ inserted: number; updated: number }> {
-    let inserted = 0;
-    let updated  = 0;
-
-    for (const record of records) {
-      const { _id, __v, createdAt, updatedAt, ...data } = record;
-      if (_id) {
-        const res = await this.apartmentModel.updateOne({ _id }, { $set: data }, { upsert: true });
-        res.upsertedCount ? inserted++ : updated++;
-      } else {
-        await new this.apartmentModel(data).save();
-        inserted++;
-      }
-    }
-
-    return { inserted, updated };
+    return this.importRecords(this.apartmentModel, records);
   }
 }

@@ -6,6 +6,8 @@ import { User, UserDocument } from './schemas/user.schema';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { QueryUserDto } from './dto/query-user.dto';
+import { paginate } from '../../shared/pagination.util';
+import { Role } from '../../shared/enums';
 
 @Injectable()
 export class UsersService {
@@ -18,7 +20,7 @@ export class UsersService {
     const passwordHash = await bcrypt.hash(dto.password, 10);
 
     return new this.userModel({
-      auth: { email: dto.email, passwordHash, role: dto.role ?? 'STAFF' },
+      auth: { email: dto.email, passwordHash, role: dto.role ?? Role.STAFF },
       profile: { fullName: dto.fullName, phone: dto.phone, identificationNumber: dto.identificationNumber },
       workContext: { assignedApartments: [], isActive: true },
       preferences: { language: 'es', notificationsEnabled: true },
@@ -26,7 +28,7 @@ export class UsersService {
   }
 
   async findAll(query: QueryUserDto) {
-    const { search, role, isActive, page = 1, limit = 10 } = query;
+    const { search, role, isActive } = query;
     const filter: Record<string, any> = {};
 
     if (search) {
@@ -39,18 +41,13 @@ export class UsersService {
     if (role) filter['auth.role'] = role;
     if (isActive !== undefined) filter['workContext.isActive'] = isActive === 'true';
 
-    const total = await this.userModel.countDocuments(filter);
-    const data  = await this.userModel
-      .find(filter)
-      .select('-auth.passwordHash')
-      .sort({ 'profile.fullName': 1 })
-      .skip((page - 1) * limit)
-      .limit(limit);
-
-    return {
-      data,
-      meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
-    };
+    return paginate(this.userModel, {
+      filter,
+      select: '-auth.passwordHash',
+      sort: { 'profile.fullName': 1 },
+      page: query.page,
+      limit: query.limit ?? 10,
+    });
   }
 
   async findById(id: string): Promise<UserDocument> {

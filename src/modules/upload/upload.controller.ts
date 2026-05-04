@@ -5,7 +5,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { UploadService, UploadFolder } from './upload.service';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { JwtAuthGuard } from '../auth';
 
 const VALID_FOLDERS: UploadFolder[] = ['apartments', 'users', 'bookings'];
 

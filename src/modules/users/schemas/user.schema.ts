@@ -1,5 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument } from 'mongoose';
+import { Role, Language } from '../../../shared/enums';
 
 export type UserDocument = HydratedDocument<User>;
 
@@ -9,7 +10,7 @@ export class User {
     type: {
       email: { type: String, required: true, unique: true, lowercase: true },
       passwordHash: { type: String, required: true },
-      role: { type: String, enum: ['SUPER_ADMIN', 'ADMIN', 'STAFF', 'GUEST'], default: 'STAFF' },
+      role: { type: String, enum: Object.values(Role), default: Role.STAFF },
     },
     required: true,
     _id: false,
@@ -17,7 +18,7 @@ export class User {
   auth!: {
     email: string;
     passwordHash: string;
-    role: 'SUPER_ADMIN' | 'ADMIN' | 'STAFF' | 'GUEST';
+    role: Role;
   };
 
   @Prop({
@@ -53,13 +54,13 @@ export class User {
 
   @Prop({
     type: {
-      language: { type: String, enum: ['es', 'pt', 'en'], default: 'es' },
+      language: { type: String, enum: Object.values(Language), default: Language.ES },
       notificationsEnabled: { type: Boolean, default: true },
     },
     _id: false,
   })
   preferences!: {
-    language: 'es' | 'pt' | 'en';
+    language: Language;
     notificationsEnabled: boolean;
   };
 }

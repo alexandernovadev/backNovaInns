@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Booking, BookingDocument } from './schemas/booking.schema';
+import { paginate } from '../../shared/pagination.util';
 
 @Injectable()
 export class BookingsService {
@@ -18,25 +19,20 @@ export class BookingsService {
     page?: number;
     limit?: number;
   } = {}) {
-    const { search, status, platform, page = 1, limit = 20 } = query;
+    const { search, status, platform } = query;
     const filter: Record<string, any> = {};
 
     if (search)   filter['group.host.fullName'] = { $regex: search, $options: 'i' };
     if (status)   filter['billing.status'] = status;
     if (platform) filter['billing.platform'] = platform;
 
-    const total = await this.bookingModel.countDocuments(filter);
-    const data  = await this.bookingModel
-      .find(filter)
-      .populate('apartmentId', 'internalName status')
-      .sort({ 'stay.checkIn': -1 })
-      .skip((page - 1) * limit)
-      .limit(limit);
-
-    return {
-      data,
-      meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
-    };
+    return paginate(this.bookingModel, {
+      filter,
+      page: query.page,
+      limit: query.limit ?? 20,
+      sort: { 'stay.checkIn': -1 },
+      populate: { path: 'apartmentId', select: 'internalName status' },
+    });
   }
 
   async findById(id: string): Promise<BookingDocument> {

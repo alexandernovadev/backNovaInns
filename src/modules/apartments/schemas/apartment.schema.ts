@@ -1,5 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument } from 'mongoose';
+import { ApartmentStatus } from '../../../shared/enums';
 
 export type ApartmentDocument = HydratedDocument<Apartment>;
 
@@ -89,8 +90,8 @@ export class Apartment {
   @Prop({ type: [PhotoSchema], default: [] })
   photos!: { url: string; publicId: string; caption: string; uploadedAt: Date }[];
 
-  @Prop({ type: String, enum: ['ACTIVE', 'MAINTENANCE', 'INACTIVE'], default: 'ACTIVE' })
-  status!: 'ACTIVE' | 'MAINTENANCE' | 'INACTIVE';
+  @Prop({ type: String, enum: Object.values(ApartmentStatus), default: ApartmentStatus.ACTIVE })
+  status!: ApartmentStatus;
 }
 
 export const ApartmentSchema = SchemaFactory.createForClass(Apartment);

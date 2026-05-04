@@ -2,6 +2,8 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Apartment, ApartmentDocument } from './schemas/apartment.schema';
+import { paginate } from '../../shared/pagination.util';
+import { ApartmentStatus } from '../../shared/enums';
 
 export interface ApartmentQuery {
   search?:  string;
@@ -19,24 +21,19 @@ export class ApartmentsService {
   }
 
   async findAll(query: ApartmentQuery = {}) {
-    const { search, status, page = 1, limit = 20 } = query;
+    const { search, status } = query;
     const filter: Record<string, any> = {};
 
     if (search) filter.internalName = { $regex: search, $options: 'i' };
     if (status) filter.status = status;
 
-    const total = await this.model.countDocuments(filter);
-    const data  = await this.model
-      .find(filter)
-      .select('internalName status rooms bathrooms parking photos createdAt')
-      .sort({ internalName: 1 })
-      .skip((page - 1) * limit)
-      .limit(limit);
-
-    return {
-      data,
-      meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
-    };
+    return paginate(this.model, {
+      filter,
+      select: 'internalName status rooms bathrooms parking photos createdAt',
+      sort: { internalName: 1 },
+      page: query.page,
+      limit: query.limit ?? 20,
+    });
   }
 
   async findById(id: string): Promise<ApartmentDocument> {
@@ -51,7 +48,7 @@ export class ApartmentsService {
     return apt;
   }
 
-  async setStatus(id: string, status: 'ACTIVE' | 'MAINTENANCE' | 'INACTIVE'): Promise<ApartmentDocument> {
+  async setStatus(id: string, status: ApartmentStatus): Promise<ApartmentDocument> {
     return this.update(id, { status });
   }
 
