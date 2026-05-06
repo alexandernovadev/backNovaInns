@@ -21,7 +21,7 @@ const locationDef = {
 
 const guestDef = {
   _id:             false,
-  fullName:        { type: String, required: true },
+  fullName:        { type: String, default: '' },
   idNumber:        { type: String, default: '' },
   birthDate:       { type: String, default: undefined },
   location:        { type: locationDef, default: undefined },
