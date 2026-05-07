@@ -37,15 +37,15 @@ export class ApartmentsService {
   }
 
   async findById(id: string): Promise<ApartmentDocument> {
-    const apt = await this.model.findById(id);
-    if (!apt) throw new NotFoundException('Apartamento no encontrado');
-    return apt;
+    const apartment = await this.model.findById(id);
+    if (!apartment) throw new NotFoundException('Apartamento no encontrado');
+    return apartment;
   }
 
   async update(id: string, data: Partial<Apartment>): Promise<ApartmentDocument> {
-    const apt = await this.model.findByIdAndUpdate(id, data, { returnDocument: 'after' });
-    if (!apt) throw new NotFoundException('Apartamento no encontrado');
-    return apt;
+    const apartment = await this.model.findByIdAndUpdate(id, data, { returnDocument: 'after' });
+    if (!apartment) throw new NotFoundException('Apartamento no encontrado');
+    return apartment;
   }
 
   async setStatus(id: string, status: ApartmentStatus): Promise<ApartmentDocument> {
@@ -59,16 +59,16 @@ export class ApartmentsService {
 
   // --- Photos ---
   async addPhoto(id: string, photo: { url: string; publicId: string; caption?: string }): Promise<ApartmentDocument> {
-    const apt = await this.model.findById(id);
-    if (!apt) throw new NotFoundException('Apartamento no encontrado');
-    apt.photos.push({ url: photo.url, publicId: photo.publicId, caption: photo.caption ?? '', uploadedAt: new Date() });
-    return apt.save();
+    const apartment = await this.model.findById(id);
+    if (!apartment) throw new NotFoundException('Apartamento no encontrado');
+    apartment.photos.push({ url: photo.url, publicId: photo.publicId, caption: photo.caption ?? '', uploadedAt: new Date() });
+    return apartment.save();
   }
 
   async removePhoto(id: string, publicId: string): Promise<ApartmentDocument> {
-    const apt = await this.model.findById(id);
-    if (!apt) throw new NotFoundException('Apartamento no encontrado');
-    apt.photos = apt.photos.filter((p: any) => p.publicId !== publicId);
-    return apt.save();
+    const apartment = await this.model.findById(id);
+    if (!apartment) throw new NotFoundException('Apartamento no encontrado');
+    apartment.photos = apartment.photos.filter((p: any) => p.publicId !== publicId);
+    return apartment.save();
   }
 }

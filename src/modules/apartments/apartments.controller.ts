@@ -10,47 +10,47 @@ import { ApartmentStatus } from '../../shared/enums';
 @UseGuards(JwtAuthGuard)
 @Controller('apartments')
 export class ApartmentsController {
-  constructor(private readonly svc: ApartmentsService) {}
+  constructor(private readonly apartmentsService: ApartmentsService) {}
 
   @Post()
   create(@Body() body: any) {
-    return this.svc.create(body);
+    return this.apartmentsService.create(body);
   }
 
   @Get()
   findAll(@Query() query: ApartmentQuery) {
-    return this.svc.findAll(query);
+    return this.apartmentsService.findAll(query);
   }
 
   @Get(':id')
   findById(@Param('id') id: string) {
-    return this.svc.findById(id);
+    return this.apartmentsService.findById(id);
   }
 
   @Patch(':id')
   update(@Param('id') id: string, @Body() body: any) {
-    return this.svc.update(id, body);
+    return this.apartmentsService.update(id, body);
   }
 
   @Patch(':id/status')
   setStatus(@Param('id') id: string, @Body('status') status: ApartmentStatus) {
-    return this.svc.setStatus(id, status);
+    return this.apartmentsService.setStatus(id, status);
   }
 
   @Delete(':id')
   @HttpCode(204)
   remove(@Param('id') id: string) {
-    return this.svc.remove(id);
+    return this.apartmentsService.remove(id);
   }
 
   // --- Photos ---
   @Post(':id/photos')
   addPhoto(@Param('id') id: string, @Body() body: { url: string; publicId: string; caption?: string }) {
-    return this.svc.addPhoto(id, body);
+    return this.apartmentsService.addPhoto(id, body);
   }
 
   @Delete(':id/photos')
   removePhoto(@Param('id') id: string, @Body('publicId') publicId: string) {
-    return this.svc.removePhoto(id, publicId);
+    return this.apartmentsService.removePhoto(id, publicId);
   }
 }
