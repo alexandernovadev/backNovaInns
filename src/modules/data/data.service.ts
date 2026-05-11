@@ -40,7 +40,11 @@ export class DataService {
   }
 
   async importBookings(records: any[]): Promise<{ inserted: number; updated: number }> {
-    return this.importRecords(this.bookingModel, records);
+    const clean = records.map(r => ({
+      ...r,
+      apartmentId: r.apartmentId?._id ?? r.apartmentId,
+    }));
+    return this.importRecords(this.bookingModel, clean);
   }
 
   async importApartments(records: any[]): Promise<{ inserted: number; updated: number }> {
