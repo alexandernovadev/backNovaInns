@@ -29,10 +29,12 @@ const guestDef = {
 };
 
 const extraServiceDef = {
-  type:        { type: String, enum: ['CAR', 'MOTORCYCLE', 'OTHER'], required: true },
+  type:        { type: String, enum: ['PARKING', 'LAUNDRY', 'OTHER'], required: true },
   description: { type: String, default: '' },
   quantity:    { type: Number, default: 1 },
   price:       { type: Number, required: true },
+  vehicleType: { type: String, enum: ['CAR', 'MOTORCYCLE', 'BICYCLE', 'OTHER'], default: undefined },
+  weightKg:    { type: Number, default: undefined },
 };
 
 @Schema({ timestamps: true })
