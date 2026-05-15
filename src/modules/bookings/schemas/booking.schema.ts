@@ -91,6 +91,8 @@ export class Booking {
 
 export const BookingSchema = SchemaFactory.createForClass(Booking);
 
+BookingSchema.index({ 'stay.checkIn': 1, 'stay.checkOut': 1 });
+
 BookingSchema.virtual('billing.pendingAmount').get(function () {
   return this.billing.totalAmount - this.billing.amountReceived;
 });

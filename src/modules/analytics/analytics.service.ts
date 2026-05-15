@@ -239,7 +239,108 @@ export class AnalyticsService {
     };
   }
 
-  // ── 12. region detail (departments/cities by country) ──
+  // ── 12. vacancy (unsold days) — ciclo fiscal 18→18 ──
+  async vacancy(from?: string, to?: string) {
+    const totalApts = await this.aptModel.countDocuments({ status: ApartmentStatus.ACTIVE });
+
+    // Default: ciclo 18 del mes anterior → 18 del mes actual (o hoy si no llegó al 18)
+    const now = new Date();
+    const fDate = from ? new Date(from) : (() => {
+      const d = new Date(now.getFullYear(), now.getMonth() - (now.getDate() < 18 ? 1 : 0), 18);
+      return d;
+    })();
+    const tDate = to ? new Date(to) : (() => {
+      const d = new Date(now.getFullYear(), now.getMonth() + (now.getDate() >= 18 ? 1 : 0), 18);
+      return d;
+    })();
+
+    // Single aggregation: expand each booking into individual days, count per date
+    const daily = await this.bookingModel.aggregate([
+      { $match: {
+        'stay.checkIn':  { $lt: tDate },
+        'stay.checkOut': { $gt: fDate },
+        'billing.status': { $ne: 'NO SHOW' },
+      }},
+      { $addFields: {
+        nights: { $range: [0, { $floor: {
+          $divide: [{ $subtract: ['$stay.checkOut', '$stay.checkIn'] }, 86400000]
+        } }] }
+      }},
+      { $unwind: '$nights' },
+      { $addFields: {
+        date: { $dateAdd: { startDate: '$stay.checkIn', unit: 'day', amount: '$nights' } }
+      }},
+      { $match: { date: { $gte: fDate, $lt: tDate } } },
+      { $group: {
+        _id: { $dateToString: { format: '%Y-%m-%d', date: '$date' } },
+        booked: { $sum: 1 },
+      }},
+      { $sort: { _id: 1 } },
+    ]);
+
+    // Build daily series with vacancy calculation
+    const dayMap = new Map(daily.map(d => [d._id, d.booked]));
+    const dailySeries: { date: string; booked: number; vacant: number }[] = [];
+    let totalUnsoldDays = 0;
+    let totalDaySlots = 0;
+
+    for (let d = new Date(fDate); d < tDate; d.setDate(d.getDate() + 1)) {
+      const key = d.toISOString().slice(0, 10);
+      const booked = dayMap.get(key) || 0;
+      const vacant = totalApts - booked;
+      dailySeries.push({ date: key, booked, vacant });
+      totalUnsoldDays += vacant;
+      totalDaySlots += totalApts;
+    }
+
+    // Monthly aggregation — agrupado por ciclo 18→18
+    const monthNames = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+    const cycleLabel = (d: Date) => {
+      const m = d.getMonth();
+      const y = d.getFullYear();
+      if (d.getDate() < 18) {
+        const from = m === 0 ? 11 : m - 1;
+        const fromY = m === 0 ? y - 1 : y;
+        return `${monthNames[from]} 18 - ${monthNames[m]} 18`;
+      }
+      const to = m === 11 ? 0 : m + 1;
+      const toY = m === 11 ? y + 1 : y;
+      return `${monthNames[m]} 18 - ${monthNames[to]} 18`;
+    };
+    const monthlyMap = new Map<string, { unsoldDays: number; availableDays: number; daysInCycle: number }>();
+    for (const day of dailySeries) {
+      const key = cycleLabel(new Date(day.date));
+      if (!monthlyMap.has(key)) monthlyMap.set(key, { unsoldDays: 0, availableDays: 0, daysInCycle: 0 });
+      const rec = monthlyMap.get(key)!;
+      rec.unsoldDays += day.vacant;
+      rec.availableDays += totalApts;
+      rec.daysInCycle += 1;
+    }
+    const monthly = Array.from(monthlyMap.entries()).map(([label, v]) => ({
+      label,
+      unsoldDays: v.unsoldDays,
+      availableDays: v.availableDays,
+      vacancyPct: Math.round((v.unsoldDays / v.availableDays) * 100 * 10) / 10,
+      daysInCycle: v.daysInCycle,
+      avgUnsoldPerApt: Math.round(v.unsoldDays / totalApts),
+      avgOccupiedPerApt: Math.round((v.availableDays - v.unsoldDays) / totalApts),
+    })).sort((a, b) => a.label.localeCompare(b.label));
+
+    const rangeDays = Math.floor((tDate.getTime() - fDate.getTime()) / 86400000);
+    return {
+      totalUnsoldDays,
+      totalDaySlots,
+      vacancyRate: totalDaySlots > 0 ? Math.round((totalUnsoldDays / totalDaySlots) * 100 * 10) / 10 : 0,
+      avgUnsoldPerApt: totalApts > 0 ? Math.round(totalUnsoldDays / totalApts) : 0,
+      avgOccupiedPerApt: totalApts > 0 ? Math.round((totalDaySlots - totalUnsoldDays) / totalApts) : 0,
+      totalDaysInRange: rangeDays,
+      totalApts,
+      daily: dailySeries,
+      monthly,
+    };
+  }
+
+  // ── 13. region detail (departments/cities by country) ──
   async guestsByRegion(countryCode: string, groupBy?: string) {
     const match = { 'group.host.location.countryCode': countryCode };
     const pipe: any[] = [

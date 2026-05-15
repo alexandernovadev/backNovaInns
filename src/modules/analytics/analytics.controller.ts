@@ -16,4 +16,9 @@ export class AnalyticsController {
   regions(@Query('country') country: string, @Query('groupBy') groupBy?: string) {
     return this.analyticsService.guestsByRegion(country, groupBy);
   }
+
+  @Get('vacancy')
+  vacancy(@Query('from') from?: string, @Query('to') to?: string) {
+    return this.analyticsService.vacancy(from, to);
+  }
 }
