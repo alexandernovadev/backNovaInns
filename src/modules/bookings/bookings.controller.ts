@@ -17,6 +17,11 @@ export class BookingsController {
     return this.bookingsService.findAll(query);
   }
 
+  @Get('calendar')
+  findForCalendar(@Query('from') from?: string, @Query('to') to?: string) {
+    return this.bookingsService.findForCalendar(from, to);
+  }
+
   @Get('summary/financial')
   financialSummary() {
     return this.bookingsService.financialSummary();

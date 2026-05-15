@@ -58,6 +58,23 @@ export class BookingsService {
     return booking;
   }
 
+  async findForCalendar(from?: string, to?: string) {
+    const filter: Record<string, any> = {};
+    if (from || to) {
+      filter['stay.checkIn'] = {};
+      if (from) filter['stay.checkIn'].$gte = new Date(from);
+      if (to)   filter['stay.checkIn'].$lt = new Date(to);
+    }
+    return paginate(this.bookingModel, {
+      filter,
+      select: 'stay.checkIn stay.checkOut billing.totalAmount group.host.fullName',
+      page: 1,
+      limit: 9999,
+      sort: { 'stay.checkIn': -1 },
+      populate: { path: 'apartmentId', select: 'internalName' },
+    });
+  }
+
   // Registra un pago parcial o total
   async remove(id: string): Promise<void> {
     const result = await this.bookingModel.findByIdAndDelete(id);
