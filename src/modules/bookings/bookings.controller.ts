@@ -23,8 +23,8 @@ export class BookingsController {
   }
 
   @Get('summary/financial')
-  financialSummary() {
-    return this.bookingsService.financialSummary();
+  financialSummary(@Query('fromDate') fromDate?: string, @Query('toDate') toDate?: string) {
+    return this.bookingsService.financialSummary(fromDate, toDate);
   }
 
   @Get(':id')

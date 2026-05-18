@@ -96,9 +96,15 @@ export class BookingsService {
   }
 
   // Resumen financiero: total esperado, recibido y pendiente
-  async financialSummary() {
+  async financialSummary(fromDate?: string, toDate?: string) {
+    const match: Record<string, any> = { 'billing.status': { $ne: 'NO SHOW' } };
+    if (fromDate || toDate) {
+      match['stay.checkIn'] = {};
+      if (fromDate) match['stay.checkIn'].$gte = new Date(fromDate);
+      if (toDate) match['stay.checkIn'].$lt = new Date(toDate);
+    }
     const result = await this.bookingModel.aggregate([
-      { $match: { 'billing.status': { $ne: 'NO SHOW' } } },
+      { $match: match },
       {
         $group: {
           _id: null,
