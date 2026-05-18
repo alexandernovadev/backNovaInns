@@ -39,7 +39,7 @@ export class BookingsService {
       filter,
       page: query.page,
       limit: query.limit ?? 20,
-      sort: { 'stay.checkIn': -1 },
+      sort: { 'stay.checkIn': 1 },
       populate: { path: 'apartmentId', select: 'internalName status' },
     });
   }
