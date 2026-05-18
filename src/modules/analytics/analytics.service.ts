@@ -78,9 +78,9 @@ export class AnalyticsService {
 
     const monthNames = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
     const cycleOf = (d: Date) => {
-      const m = d.getMonth();
-      const y = d.getFullYear();
-      if (d.getDate() < 18) {
+      const m = d.getUTCMonth();
+      const y = d.getUTCFullYear();
+      if (d.getUTCDate() < 18) {
         const fromM = m === 0 ? 11 : m - 1;
         const fromY = m === 0 ? y - 1 : y;
         const toM = m;
@@ -320,15 +320,13 @@ export class AnalyticsService {
     // Monthly aggregation — agrupado por ciclo 18→18
     const monthNames = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
     const cycleLabel = (d: Date) => {
-      const m = d.getMonth();
-      const y = d.getFullYear();
-      if (d.getDate() < 18) {
+      const m = d.getUTCMonth();
+      const y = d.getUTCFullYear();
+      if (d.getUTCDate() < 18) {
         const from = m === 0 ? 11 : m - 1;
-        const fromY = m === 0 ? y - 1 : y;
         return `${monthNames[from]} 18 - ${monthNames[m]} 18`;
       }
       const to = m === 11 ? 0 : m + 1;
-      const toY = m === 11 ? y + 1 : y;
       return `${monthNames[m]} 18 - ${monthNames[to]} 18`;
     };
     const monthlyMap = new Map<string, { unsoldDays: number; availableDays: number; daysInCycle: number }>();
