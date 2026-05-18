@@ -67,7 +67,7 @@ export class AnalyticsService {
     pipe.push({
       $group: {
         _id: { year: { $year: '$stay.checkIn' }, month: { $month: '$stay.checkIn' } },
-        expected: { $sum: '$billing.totalAmount' },
+        pending: { $sum: { $subtract: ['$billing.totalAmount', '$billing.amountReceived'] } },
         received: { $sum: '$billing.amountReceived' },
         count: { $sum: 1 },
       },
@@ -76,7 +76,7 @@ export class AnalyticsService {
     const rows = await this.bookingModel.aggregate(pipe);
     return rows.map(r => ({
       month: `${r._id.year}-${String(r._id.month).padStart(2, '0')}`,
-      expected: r.expected,
+      pending: r.pending,
       received: r.received,
       count: r.count,
     }));
