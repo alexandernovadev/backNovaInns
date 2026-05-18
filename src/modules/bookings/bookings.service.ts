@@ -82,7 +82,7 @@ export class BookingsService {
   }
 
   async registerPayment(id: string, amount: number): Promise<BookingDocument> {
-    const booking = await this.bookingModel.findById(id);
+    const booking = await this.bookingModel.findById(id).populate('apartmentId', 'internalName status');
     if (!booking) throw new NotFoundException('Reserva no encontrada');
 
     booking.billing.amountReceived += amount;
