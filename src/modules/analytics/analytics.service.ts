@@ -61,25 +61,49 @@ export class AnalyticsService {
       : { totalExpected: 0, totalReceived: 0, totalPending: 0, bookingCount: 0, avgTotal: 0, avgNights: 0 };
   }
 
-  // ── 2. revenue by month ──
+  // ── 2. revenue by cycle (ciclo fiscal 18→18) ──
   private async revenueByMonth(match: Record<string, any>) {
-    const pipe: any[] = [{ $match: { ...match, 'billing.status': { $ne: 'NO SHOW' } } }];
-    pipe.push({
-      $group: {
-        _id: { year: { $year: '$stay.checkIn' }, month: { $month: '$stay.checkIn' } },
-        pending: { $sum: { $subtract: ['$billing.totalAmount', '$billing.amountReceived'] } },
-        received: { $sum: '$billing.amountReceived' },
-        count: { $sum: 1 },
+    const pipe: any[] = [
+      { $match: { ...match, 'billing.status': { $ne: 'NO SHOW' } } },
+      {
+        $project: {
+          checkIn: 1,
+          pending: { $subtract: ['$billing.totalAmount', '$billing.amountReceived'] },
+          received: '$billing.amountReceived',
+        },
       },
-    });
-    pipe.push({ $sort: { '_id.year': 1, '_id.month': 1 } });
-    const rows = await this.bookingModel.aggregate(pipe);
-    return rows.map(r => ({
-      month: `${r._id.year}-${String(r._id.month).padStart(2, '0')}`,
-      pending: r.pending,
-      received: r.received,
-      count: r.count,
-    }));
+      { $sort: { checkIn: 1 } },
+    ];
+    const bookings = await this.bookingModel.aggregate(pipe);
+
+    const monthNames = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+    const cycleOf = (d: Date) => {
+      const m = d.getMonth();
+      const y = d.getFullYear();
+      if (d.getDate() < 18) {
+        const fromM = m === 0 ? 11 : m - 1;
+        const fromY = m === 0 ? y - 1 : y;
+        const toM = m;
+        return { key: `${fromY}-${String(fromM).padStart(2, '0')}`, label: `${monthNames[fromM]} 18 - ${monthNames[toM]} 18`, sort: fromY * 12 + fromM };
+      }
+      const toM = m === 11 ? 0 : m + 1;
+      const toY = m === 11 ? y + 1 : y;
+      return { key: `${y}-${String(m).padStart(2, '0')}`, label: `${monthNames[m]} 18 - ${monthNames[toM]} 18`, sort: y * 12 + m };
+    };
+
+    const map = new Map<string, { label: string; sort: number; pending: number; received: number; count: number }>();
+    for (const b of bookings) {
+      const { key, label, sort } = cycleOf(new Date(b.checkIn));
+      if (!map.has(key)) map.set(key, { label, sort, pending: 0, received: 0, count: 0 });
+      const entry = map.get(key)!;
+      entry.pending += b.pending;
+      entry.received += b.received;
+      entry.count += 1;
+    }
+
+    return Array.from(map.values())
+      .sort((a, b) => a.sort - b.sort)
+      .map(r => ({ month: r.label, pending: r.pending, received: r.received, count: r.count }));
   }
 
   // ── 3. platform distribution ──
