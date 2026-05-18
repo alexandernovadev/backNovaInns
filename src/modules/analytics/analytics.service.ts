@@ -67,7 +67,7 @@ export class AnalyticsService {
       { $match: { ...match, 'billing.status': { $ne: 'NO SHOW' } } },
       {
         $project: {
-          checkIn: 1,
+          checkIn: '$stay.checkIn',
           pending: { $subtract: ['$billing.totalAmount', '$billing.amountReceived'] },
           received: '$billing.amountReceived',
         },
