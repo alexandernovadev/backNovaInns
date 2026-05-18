@@ -264,8 +264,9 @@ export class AnalyticsService {
   }
 
   // ── 13. region detail (departments/cities by country) ──
-  async guestsByRegion(countryCode: string, groupBy?: string) {
-    const match = { 'group.host.location.countryCode': countryCode };
+  async guestsByRegion(countryCode: string, groupBy?: string, from?: string, to?: string) {
+    const dateFilter = this.dateMatch(from, to);
+    const match = { ...dateFilter, 'group.host.location.countryCode': countryCode };
     const pipe: any[] = [
       { $match: match },
       { $addFields: {
