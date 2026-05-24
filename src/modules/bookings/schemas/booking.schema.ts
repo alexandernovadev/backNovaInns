@@ -56,11 +56,12 @@ export class Booking {
     type: {
       checkIn:  { type: Date, required: true },
       checkOut: { type: Date, required: true },
+      status:   { type: String, enum: ['PENDIENTE', 'CHECK-IN', 'CHECK-OUT'], default: 'PENDIENTE' },
     },
     required: true,
     _id: false,
   })
-  stay!: { checkIn: Date; checkOut: Date };
+  stay!: { checkIn: Date; checkOut: Date; status: string };
 
   @Prop({
     type: {

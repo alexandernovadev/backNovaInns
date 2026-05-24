@@ -37,6 +37,11 @@ export class BookingsController {
     return this.bookingsService.update(id, body);
   }
 
+  @Patch(':id/status')
+  updateStayStatus(@Param('id') id: string, @Body('status') status: string) {
+    return this.bookingsService.updateStayStatus(id, status);
+  }
+
   @Patch(':id/payment')
   registerPayment(@Param('id') id: string, @Body('amount') amount: number) {
     return this.bookingsService.registerPayment(id, amount);
