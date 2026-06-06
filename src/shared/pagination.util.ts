@@ -18,10 +18,25 @@ export async function paginate<T>(
   model: Model<T>,
   opts: PaginateOptions<T> = {},
 ): Promise<PaginatedResult<T>> {
-  const { filter = {}, select, populate, sort = {}, page = 1, limit = 20 } = opts;
+  const {
+    filter = {},
+    select,
+    populate,
+    sort = {},
+    page = 1,
+    limit = 20,
+  } = opts;
   const total = await model.countDocuments(filter);
-  let query = model.find(filter).select(select ?? '').sort(sort).skip((page - 1) * limit).limit(limit);
+  let query = model
+    .find(filter)
+    .select(select ?? '')
+    .sort(sort)
+    .skip((page - 1) * limit)
+    .limit(limit);
   if (populate) query = query.populate(populate);
   const data = await query;
-  return { data, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } };
+  return {
+    data,
+    meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
+  };
 }

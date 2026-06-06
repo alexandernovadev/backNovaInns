@@ -11,6 +11,7 @@ import { SeedModule } from './modules/seed/seed.module';
 import { UploadModule } from './modules/upload/upload.module';
 import { DataModule } from './modules/data/data.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
+import { ExpensesModule } from './modules/expenses/expenses.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { AnalyticsModule } from './modules/analytics/analytics.module';
     UploadModule,
     DataModule,
     AnalyticsModule,
+    ExpensesModule,
   ],
   controllers: [AppController],
   providers: [AppService],

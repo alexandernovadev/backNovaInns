@@ -1,6 +1,13 @@
 import {
-  Controller, Post, Delete, Param, Query,
-  UploadedFile, UseInterceptors, UseGuards, BadRequestException,
+  Controller,
+  Post,
+  Delete,
+  Param,
+  Query,
+  UploadedFile,
+  UseInterceptors,
+  UseGuards,
+  BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
@@ -26,23 +33,34 @@ export class UploadController {
    * folder: apartments | users | bookings
    */
   @Post(':folder')
-  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), fileFilter: imageFilter, limits: { fileSize: 10 * 1024 * 1024 } }))
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      fileFilter: imageFilter,
+      limits: { fileSize: 10 * 1024 * 1024 },
+    }),
+  )
   async upload(
     @Param('folder') folder: string,
     @UploadedFile() file: Express.Multer.File,
   ) {
     if (!VALID_FOLDERS.includes(folder as UploadFolder)) {
-      throw new BadRequestException(`Folder inválido. Usa: ${VALID_FOLDERS.join(', ')}`);
+      throw new BadRequestException(
+        `Folder inválido. Usa: ${VALID_FOLDERS.join(', ')}`,
+      );
     }
 
-    const result = await this.uploadService.uploadFile(file, folder as UploadFolder);
+    const result = await this.uploadService.uploadFile(
+      file,
+      folder as UploadFolder,
+    );
 
     return {
-      url:      result.secure_url,
+      url: result.secure_url,
       publicId: result.public_id,
-      width:    result.width,
-      height:   result.height,
-      format:   result.format,
+      width: result.width,
+      height: result.height,
+      format: result.format,
     };
   }
 

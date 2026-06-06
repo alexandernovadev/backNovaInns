@@ -5,7 +5,9 @@ import { SeedService } from './seed.service';
 import { User, UserSchema } from '../users';
 
 @Module({
-  imports: [MongooseModule.forFeature([{ name: User.name, schema: UserSchema }])],
+  imports: [
+    MongooseModule.forFeature([{ name: User.name, schema: UserSchema }]),
+  ],
   controllers: [SeedController],
   providers: [SeedService],
 })

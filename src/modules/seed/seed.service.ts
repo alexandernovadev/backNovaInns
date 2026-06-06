@@ -10,13 +10,19 @@ export class SeedService {
   constructor(@InjectModel(User.name) private userModel: Model<UserDocument>) {}
 
   async run() {
-    const exists = await this.userModel.findOne({ 'auth.email': 'admin@novainns.com' });
+    const exists = await this.userModel.findOne({
+      'auth.email': 'admin@novainns.com',
+    });
     if (exists) return { message: 'Seed ya ejecutado — usuario ya existe' };
 
     const passwordHash = await bcrypt.hash('nova1234', 10);
 
     await this.userModel.create({
-      auth: { email: 'admin@novainns.com', passwordHash, role: Role.SUPER_ADMIN },
+      auth: {
+        email: 'admin@novainns.com',
+        passwordHash,
+        role: Role.SUPER_ADMIN,
+      },
       profile: { fullName: 'Admin Nova', phone: '3001234567' },
       workContext: { assignedApartments: [], isActive: true },
       preferences: { language: Language.ES, notificationsEnabled: true },

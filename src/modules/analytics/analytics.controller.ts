@@ -13,7 +13,12 @@ export class AnalyticsController {
   }
 
   @Get('regions')
-  regions(@Query('country') country: string, @Query('groupBy') groupBy?: string, @Query('from') from?: string, @Query('to') to?: string) {
+  regions(
+    @Query('country') country: string,
+    @Query('groupBy') groupBy?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
     return this.analyticsService.guestsByRegion(country, groupBy, from, to);
   }
 

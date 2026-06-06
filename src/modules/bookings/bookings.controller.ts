@@ -1,4 +1,14 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { BookingsService } from './bookings.service';
 import { JwtAuthGuard } from '../auth';
 
@@ -13,7 +23,16 @@ export class BookingsController {
   }
 
   @Get()
-  findAll(@Query() query: { search?: string; status?: string; platform?: string; page?: number; limit?: number }) {
+  findAll(
+    @Query()
+    query: {
+      search?: string;
+      status?: string;
+      platform?: string;
+      page?: number;
+      limit?: number;
+    },
+  ) {
     return this.bookingsService.findAll(query);
   }
 
@@ -23,7 +42,10 @@ export class BookingsController {
   }
 
   @Get('summary/financial')
-  financialSummary(@Query('fromDate') fromDate?: string, @Query('toDate') toDate?: string) {
+  financialSummary(
+    @Query('fromDate') fromDate?: string,
+    @Query('toDate') toDate?: string,
+  ) {
     return this.bookingsService.financialSummary(fromDate, toDate);
   }
 

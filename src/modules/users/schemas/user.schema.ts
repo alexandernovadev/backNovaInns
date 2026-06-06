@@ -54,7 +54,11 @@ export class User {
 
   @Prop({
     type: {
-      language: { type: String, enum: Object.values(Language), default: Language.ES },
+      language: {
+        type: String,
+        enum: Object.values(Language),
+        default: Language.ES,
+      },
       notificationsEnabled: { type: Boolean, default: true },
     },
     _id: false,

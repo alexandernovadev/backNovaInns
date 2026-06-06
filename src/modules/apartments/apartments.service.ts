@@ -6,15 +6,17 @@ import { paginate } from '../../shared/pagination.util';
 import { ApartmentStatus } from '../../shared/enums';
 
 export interface ApartmentQuery {
-  search?:  string;
-  status?:  string;
-  page?:    number;
-  limit?:   number;
+  search?: string;
+  status?: string;
+  page?: number;
+  limit?: number;
 }
 
 @Injectable()
 export class ApartmentsService {
-  constructor(@InjectModel(Apartment.name) private model: Model<ApartmentDocument>) {}
+  constructor(
+    @InjectModel(Apartment.name) private model: Model<ApartmentDocument>,
+  ) {}
 
   async create(data: Partial<Apartment>): Promise<ApartmentDocument> {
     return new this.model(data).save();
@@ -42,13 +44,21 @@ export class ApartmentsService {
     return apartment;
   }
 
-  async update(id: string, data: Partial<Apartment>): Promise<ApartmentDocument> {
-    const apartment = await this.model.findByIdAndUpdate(id, data, { returnDocument: 'after' });
+  async update(
+    id: string,
+    data: Partial<Apartment>,
+  ): Promise<ApartmentDocument> {
+    const apartment = await this.model.findByIdAndUpdate(id, data, {
+      returnDocument: 'after',
+    });
     if (!apartment) throw new NotFoundException('Apartamento no encontrado');
     return apartment;
   }
 
-  async setStatus(id: string, status: ApartmentStatus): Promise<ApartmentDocument> {
+  async setStatus(
+    id: string,
+    status: ApartmentStatus,
+  ): Promise<ApartmentDocument> {
     return this.update(id, { status });
   }
 
@@ -58,17 +68,27 @@ export class ApartmentsService {
   }
 
   // --- Photos ---
-  async addPhoto(id: string, photo: { url: string; publicId: string; caption?: string }): Promise<ApartmentDocument> {
+  async addPhoto(
+    id: string,
+    photo: { url: string; publicId: string; caption?: string },
+  ): Promise<ApartmentDocument> {
     const apartment = await this.model.findById(id);
     if (!apartment) throw new NotFoundException('Apartamento no encontrado');
-    apartment.photos.push({ url: photo.url, publicId: photo.publicId, caption: photo.caption ?? '', uploadedAt: new Date() });
+    apartment.photos.push({
+      url: photo.url,
+      publicId: photo.publicId,
+      caption: photo.caption ?? '',
+      uploadedAt: new Date(),
+    });
     return apartment.save();
   }
 
   async removePhoto(id: string, publicId: string): Promise<ApartmentDocument> {
     const apartment = await this.model.findById(id);
     if (!apartment) throw new NotFoundException('Apartamento no encontrado');
-    apartment.photos = apartment.photos.filter((p: any) => p.publicId !== publicId);
+    apartment.photos = apartment.photos.filter(
+      (p: any) => p.publicId !== publicId,
+    );
     return apartment.save();
   }
 }

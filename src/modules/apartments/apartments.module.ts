@@ -5,7 +5,11 @@ import { ApartmentsService } from './apartments.service';
 import { Apartment, ApartmentSchema } from './schemas/apartment.schema';
 
 @Module({
-  imports: [MongooseModule.forFeature([{ name: Apartment.name, schema: ApartmentSchema }])],
+  imports: [
+    MongooseModule.forFeature([
+      { name: Apartment.name, schema: ApartmentSchema },
+    ]),
+  ],
   controllers: [ApartmentsController],
   providers: [ApartmentsService],
   exports: [ApartmentsService],

@@ -10,12 +10,15 @@ export class UploadService {
   constructor(config: ConfigService) {
     cloudinary.config({
       cloud_name: config.get('CLOUDINARY_CLOUD_NAME'),
-      api_key:    config.get('CLOUDINARY_API_KEY'),
+      api_key: config.get('CLOUDINARY_API_KEY'),
       api_secret: config.get('CLOUDINARY_API_SECRET'),
     });
   }
 
-  async uploadFile(file: Express.Multer.File, folder: UploadFolder): Promise<UploadApiResponse> {
+  async uploadFile(
+    file: Express.Multer.File,
+    folder: UploadFolder,
+  ): Promise<UploadApiResponse> {
     if (!file) throw new BadRequestException('No se recibió ningún archivo');
 
     return new Promise((resolve, reject) => {
@@ -26,7 +29,8 @@ export class UploadService {
           transformation: [{ quality: 'auto', fetch_format: 'auto' }],
         },
         (error, result) => {
-          if (error || !result) return reject(error ?? new Error('Upload failed'));
+          if (error || !result)
+            return reject(error ?? new Error('Upload failed'));
           resolve(result);
         },
       );

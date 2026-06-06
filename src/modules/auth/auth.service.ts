@@ -17,8 +17,12 @@ export class AuthService {
     const user = await this.userModel.findOne({ 'auth.email': dto.email });
     if (!user) throw new UnauthorizedException('Credenciales inválidas');
 
-    const passwordMatch = await bcrypt.compare(dto.password, user.auth.passwordHash);
-    if (!passwordMatch) throw new UnauthorizedException('Credenciales inválidas');
+    const passwordMatch = await bcrypt.compare(
+      dto.password,
+      user.auth.passwordHash,
+    );
+    if (!passwordMatch)
+      throw new UnauthorizedException('Credenciales inválidas');
 
     await this.userModel.updateOne(
       { _id: user._id },

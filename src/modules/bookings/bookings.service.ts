@@ -6,35 +6,40 @@ import { paginate } from '../../shared/pagination.util';
 
 @Injectable()
 export class BookingsService {
-  constructor(@InjectModel(Booking.name) private bookingModel: Model<BookingDocument>) {}
+  constructor(
+    @InjectModel(Booking.name) private bookingModel: Model<BookingDocument>,
+  ) {}
 
   async create(data: any): Promise<BookingDocument> {
     return new this.bookingModel(data).save();
   }
 
-  async findAll(query: {
-    search?: string;
-    status?: string;
-    lifecycle?: string;
-    platform?: string;
-    page?: number;
-    limit?: number;
-    fromDate?: string;
-    toDate?: string;
-  } = {}) {
+  async findAll(
+    query: {
+      search?: string;
+      status?: string;
+      lifecycle?: string;
+      platform?: string;
+      page?: number;
+      limit?: number;
+      fromDate?: string;
+      toDate?: string;
+    } = {},
+  ) {
     const { search, status, lifecycle, platform, fromDate, toDate } = query;
     const filter: Record<string, any> = {};
 
-    if (search)    filter['group.host.fullName'] = { $regex: search, $options: 'i' };
-    if (status)    filter['billing.status'] = status;
+    if (search)
+      filter['group.host.fullName'] = { $regex: search, $options: 'i' };
+    if (status) filter['billing.status'] = status;
     if (lifecycle) filter['stay.status'] = lifecycle;
-    if (platform)  filter['billing.platform'] = platform;
+    if (platform) filter['billing.platform'] = platform;
     // Filtro por ciclo mensal (18 do mês X até 18 do mês seguinte)
     // O negócio iniciou operações no dia 18, então o ciclo fiscal é 18→18
     if (fromDate || toDate) {
       filter['stay.checkIn'] = {};
       if (fromDate) filter['stay.checkIn'].$gte = new Date(fromDate);
-      if (toDate)   filter['stay.checkIn'].$lt = new Date(toDate);
+      if (toDate) filter['stay.checkIn'].$lt = new Date(toDate);
     }
 
     return paginate(this.bookingModel, {
@@ -55,7 +60,11 @@ export class BookingsService {
   }
 
   async update(id: string, data: any): Promise<BookingDocument> {
-    const booking = await this.bookingModel.findByIdAndUpdate(id, { $set: data }, { returnDocument: 'after' });
+    const booking = await this.bookingModel.findByIdAndUpdate(
+      id,
+      { $set: data },
+      { returnDocument: 'after' },
+    );
     if (!booking) throw new NotFoundException('Reserva no encontrada');
     return booking;
   }
@@ -65,11 +74,12 @@ export class BookingsService {
     if (from || to) {
       filter['stay.checkIn'] = {};
       if (from) filter['stay.checkIn'].$gte = new Date(from);
-      if (to)   filter['stay.checkIn'].$lt = new Date(to);
+      if (to) filter['stay.checkIn'].$lt = new Date(to);
     }
     return paginate(this.bookingModel, {
       filter,
-      select: 'stay.checkIn stay.checkOut stay.status billing.totalAmount group.host.fullName',
+      select:
+        'stay.checkIn stay.checkOut stay.status billing.totalAmount group.host.fullName',
       page: 1,
       limit: 9999,
       sort: { 'stay.checkIn': -1 },
@@ -84,7 +94,9 @@ export class BookingsService {
   }
 
   async registerPayment(id: string, amount: number): Promise<BookingDocument> {
-    const booking = await this.bookingModel.findById(id).populate('apartmentId', 'internalName status');
+    const booking = await this.bookingModel
+      .findById(id)
+      .populate('apartmentId', 'internalName status');
     if (!booking) throw new NotFoundException('Reserva no encontrada');
 
     booking.billing.amountReceived += amount;
@@ -98,11 +110,13 @@ export class BookingsService {
   }
 
   async updateStayStatus(id: string, status: string): Promise<BookingDocument> {
-    const booking = await this.bookingModel.findByIdAndUpdate(
-      id,
-      { $set: { 'stay.status': status } },
-      { returnDocument: 'after' },
-    ).populate('apartmentId', 'internalName status');
+    const booking = await this.bookingModel
+      .findByIdAndUpdate(
+        id,
+        { $set: { 'stay.status': status } },
+        { returnDocument: 'after' },
+      )
+      .populate('apartmentId', 'internalName status');
     if (!booking) throw new NotFoundException('Reserva no encontrada');
     return booking;
   }

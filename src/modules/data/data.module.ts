@@ -8,11 +8,11 @@ import { Apartment, ApartmentSchema } from '../apartments';
 @Module({
   imports: [
     MongooseModule.forFeature([
-      { name: Booking.name,   schema: BookingSchema   },
+      { name: Booking.name, schema: BookingSchema },
       { name: Apartment.name, schema: ApartmentSchema },
     ]),
   ],
   controllers: [DataController],
-  providers:   [DataService],
+  providers: [DataService],
 })
 export class DataModule {}

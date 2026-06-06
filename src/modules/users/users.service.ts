@@ -1,4 +1,8 @@
-import { Injectable, ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import * as bcrypt from 'bcryptjs';
@@ -21,7 +25,11 @@ export class UsersService {
 
     return new this.userModel({
       auth: { email: dto.email, passwordHash, role: dto.role ?? Role.STAFF },
-      profile: { fullName: dto.fullName, phone: dto.phone, identificationNumber: dto.identificationNumber },
+      profile: {
+        fullName: dto.fullName,
+        phone: dto.phone,
+        identificationNumber: dto.identificationNumber,
+      },
       workContext: { assignedApartments: [], isActive: true },
       preferences: { language: 'es', notificationsEnabled: true },
     }).save();
@@ -34,12 +42,13 @@ export class UsersService {
     if (search) {
       filter.$or = [
         { 'profile.fullName': { $regex: search, $options: 'i' } },
-        { 'auth.email':       { $regex: search, $options: 'i' } },
+        { 'auth.email': { $regex: search, $options: 'i' } },
       ];
     }
 
     if (role) filter['auth.role'] = role;
-    if (isActive !== undefined) filter['workContext.isActive'] = isActive === 'true';
+    if (isActive !== undefined)
+      filter['workContext.isActive'] = isActive === 'true';
 
     return paginate(this.userModel, {
       filter,
@@ -60,12 +69,13 @@ export class UsersService {
     const user = await this.userModel.findById(id);
     if (!user) throw new NotFoundException('Usuario no encontrado');
 
-    if (dto.fullName)            user.profile.fullName           = dto.fullName;
-    if (dto.phone)               user.profile.phone              = dto.phone;
-    if (dto.identificationNumber !== undefined) user.profile.identificationNumber = dto.identificationNumber;
-    if (dto.role)                user.auth.role                  = dto.role;
-    if (dto.language)            user.preferences.language       = dto.language;
-    if (dto.isActive !== undefined) user.workContext.isActive     = dto.isActive;
+    if (dto.fullName) user.profile.fullName = dto.fullName;
+    if (dto.phone) user.profile.phone = dto.phone;
+    if (dto.identificationNumber !== undefined)
+      user.profile.identificationNumber = dto.identificationNumber;
+    if (dto.role) user.auth.role = dto.role;
+    if (dto.language) user.preferences.language = dto.language;
+    if (dto.isActive !== undefined) user.workContext.isActive = dto.isActive;
 
     return user.save();
   }

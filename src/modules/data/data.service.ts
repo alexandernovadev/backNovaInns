@@ -7,13 +7,17 @@ import { Apartment, ApartmentDocument } from '../apartments';
 @Injectable()
 export class DataService {
   constructor(
-    @InjectModel(Booking.name)   private bookingModel:   Model<BookingDocument>,
-    @InjectModel(Apartment.name) private apartmentModel: Model<ApartmentDocument>,
+    @InjectModel(Booking.name) private bookingModel: Model<BookingDocument>,
+    @InjectModel(Apartment.name)
+    private apartmentModel: Model<ApartmentDocument>,
   ) {}
 
   // ── EXPORT ──────────────────────────────────────────────
   async exportBookings() {
-    return this.bookingModel.find().populate('apartmentId', 'internalName status').lean();
+    return this.bookingModel
+      .find()
+      .populate('apartmentId', 'internalName status')
+      .lean();
   }
 
   async exportApartments() {
@@ -21,14 +25,21 @@ export class DataService {
   }
 
   // ── IMPORT ──────────────────────────────────────────────
-  private async importRecords<T>(model: Model<T>, records: any[]): Promise<{ inserted: number; updated: number }> {
+  private async importRecords<T>(
+    model: Model<T>,
+    records: any[],
+  ): Promise<{ inserted: number; updated: number }> {
     let inserted = 0;
-    let updated  = 0;
+    let updated = 0;
 
     for (const record of records) {
       const { _id, __v, createdAt, updatedAt, ...data } = record;
       if (_id) {
-        const res = await model.updateOne({ _id }, { $set: data }, { upsert: true });
+        const res = await model.updateOne(
+          { _id },
+          { $set: data },
+          { upsert: true },
+        );
         res.upsertedCount ? inserted++ : updated++;
       } else {
         await new model(data).save();
@@ -39,15 +50,19 @@ export class DataService {
     return { inserted, updated };
   }
 
-  async importBookings(records: any[]): Promise<{ inserted: number; updated: number }> {
-    const clean = records.map(r => ({
+  async importBookings(
+    records: any[],
+  ): Promise<{ inserted: number; updated: number }> {
+    const clean = records.map((r) => ({
       ...r,
       apartmentId: r.apartmentId?._id ?? r.apartmentId,
     }));
     return this.importRecords(this.bookingModel, clean);
   }
 
-  async importApartments(records: any[]): Promise<{ inserted: number; updated: number }> {
+  async importApartments(
+    records: any[],
+  ): Promise<{ inserted: number; updated: number }> {
     return this.importRecords(this.apartmentModel, records);
   }
 }

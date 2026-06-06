@@ -1,6 +1,14 @@
 import {
-  Body, Controller, Delete, Get, HttpCode, Param,
-  Patch, Post, Query, UseGuards,
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Param,
+  Patch,
+  Post,
+  Query,
+  UseGuards,
 } from '@nestjs/common';
 import { ApartmentsService } from './apartments.service';
 import type { ApartmentQuery } from './apartments.service';
@@ -45,7 +53,10 @@ export class ApartmentsController {
 
   // --- Photos ---
   @Post(':id/photos')
-  addPhoto(@Param('id') id: string, @Body() body: { url: string; publicId: string; caption?: string }) {
+  addPhoto(
+    @Param('id') id: string,
+    @Body() body: { url: string; publicId: string; caption?: string },
+  ) {
     return this.apartmentsService.addPhoto(id, body);
   }
 
