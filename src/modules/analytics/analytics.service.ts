@@ -32,7 +32,7 @@ export class AnalyticsService {
     if (!from && !to) return {};
     const f: Record<string, any> = {};
     if (from) f.$gte = new Date(from);
-    if (to) f.$lte = new Date(to);
+    if (to) f.$lt = new Date(to);
     return { 'stay.checkIn': f };
   }
 
@@ -78,7 +78,7 @@ export class AnalyticsService {
         };
   }
 
-  // ── 2. revenue by cycle (ciclo fiscal 18→18) ──
+  // ── 2. revenue by calendar month ──
   private async revenueByMonth(match: Record<string, any>) {
     const pipe: any[] = [
       { $match: { ...match, 'billing.status': { $ne: 'NO SHOW' } } },
@@ -109,27 +109,6 @@ export class AnalyticsService {
       'Nov',
       'Dic',
     ];
-    const cycleOf = (d: Date) => {
-      const m = d.getUTCMonth();
-      const y = d.getUTCFullYear();
-      if (d.getUTCDate() < 18) {
-        const fromM = m === 0 ? 11 : m - 1;
-        const fromY = m === 0 ? y - 1 : y;
-        const toM = m;
-        return {
-          key: `${fromY}-${String(fromM).padStart(2, '0')}`,
-          label: `${monthNames[fromM]} 18 - ${monthNames[toM]} 18`,
-          sort: fromY * 12 + fromM,
-        };
-      }
-      const toM = m === 11 ? 0 : m + 1;
-      const toY = m === 11 ? y + 1 : y;
-      return {
-        key: `${y}-${String(m).padStart(2, '0')}`,
-        label: `${monthNames[m]} 18 - ${monthNames[toM]} 18`,
-        sort: y * 12 + m,
-      };
-    };
 
     const map = new Map<
       string,
@@ -142,9 +121,18 @@ export class AnalyticsService {
       }
     >();
     for (const b of bookings) {
-      const { key, label, sort } = cycleOf(new Date(b.checkIn));
+      const d = new Date(b.checkIn);
+      const m = d.getUTCMonth();
+      const y = d.getUTCFullYear();
+      const key = `${y}-${String(m).padStart(2, '0')}`;
       if (!map.has(key))
-        map.set(key, { label, sort, pending: 0, received: 0, count: 0 });
+        map.set(key, {
+          label: `${monthNames[m]} ${String(y).slice(2)}`,
+          sort: y * 12 + m,
+          pending: 0,
+          received: 0,
+          count: 0,
+        });
       const entry = map.get(key)!;
       entry.pending += b.pending;
       entry.received += b.received;
@@ -279,34 +267,20 @@ export class AnalyticsService {
     );
   }
 
-  // ── 7. vacancy (unsold days) — ciclo fiscal 18→18 ──
+  // ── 7. vacancy (unsold days) — mes calendario ──
   async vacancy(from?: string, to?: string) {
     const totalApts = await this.aptModel.countDocuments({
       status: ApartmentStatus.ACTIVE,
     });
 
-    // Default: ciclo 18 del mes anterior → 18 del mes actual (o hoy si no llegó al 18)
+    // Default: mes calendario actual (1ro → 1ro del mes siguiente)
     const now = new Date();
     const fDate = from
       ? new Date(from)
-      : (() => {
-          const d = new Date(
-            now.getFullYear(),
-            now.getMonth() - (now.getDate() < 18 ? 1 : 0),
-            18,
-          );
-          return d;
-        })();
+      : new Date(now.getFullYear(), now.getMonth(), 1);
     const tDate = to
       ? new Date(to)
-      : (() => {
-          const d = new Date(
-            now.getFullYear(),
-            now.getMonth() + (now.getDate() >= 18 ? 1 : 0),
-            18,
-          );
-          return d;
-        })();
+      : new Date(now.getFullYear(), now.getMonth() + 1, 1);
 
     // Single aggregation: expand each booking into individual days, count per date
     const daily = await this.bookingModel.aggregate([
@@ -371,7 +345,7 @@ export class AnalyticsService {
       totalDaySlots += totalApts;
     }
 
-    // Monthly aggregation — agrupado por ciclo 18→18
+    // Monthly aggregation — agrupado por mes calendario
     const monthNames = [
       'Ene',
       'Feb',
@@ -386,22 +360,17 @@ export class AnalyticsService {
       'Nov',
       'Dic',
     ];
-    const cycleLabel = (d: Date) => {
+    const monthLabel = (d: Date) => {
       const m = d.getUTCMonth();
       const y = d.getUTCFullYear();
-      if (d.getUTCDate() < 18) {
-        const from = m === 0 ? 11 : m - 1;
-        return `${monthNames[from]} 18 - ${monthNames[m]} 18`;
-      }
-      const to = m === 11 ? 0 : m + 1;
-      return `${monthNames[m]} 18 - ${monthNames[to]} 18`;
+      return `${monthNames[m]} ${String(y).slice(2)}`;
     };
     const monthlyMap = new Map<
       string,
       { unsoldDays: number; availableDays: number; daysInCycle: number }
     >();
     for (const day of dailySeries) {
-      const key = cycleLabel(new Date(day.date));
+      const key = monthLabel(new Date(day.date));
       if (!monthlyMap.has(key))
         monthlyMap.set(key, {
           unsoldDays: 0,

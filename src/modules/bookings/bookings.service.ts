@@ -34,8 +34,7 @@ export class BookingsService {
     if (status) filter['billing.status'] = status;
     if (lifecycle) filter['stay.status'] = lifecycle;
     if (platform) filter['billing.platform'] = platform;
-    // Filtro por ciclo mensal (18 do mês X até 18 do mês seguinte)
-    // O negócio iniciou operações no dia 18, então o ciclo fiscal é 18→18
+    // Filtro por rango de fechas de checkIn (mes calendario)
     if (fromDate || toDate) {
       filter['stay.checkIn'] = {};
       if (fromDate) filter['stay.checkIn'].$gte = new Date(fromDate);
