@@ -5,13 +5,13 @@ import { SeedService } from './seed.service';
 export class SeedController {
   constructor(private readonly seedService: SeedService) {}
 
-  // @Post()
-  // run() {
-  //   return this.seedService.run();
-  // }
+  @Post()
+  run() {
+    return this.seedService.run();
+  }
 
-  // @Delete()
-  // clear() {
-  //   return this.seedService.clear();
-  // }
+  @Delete()
+  clear() {
+    return this.seedService.clear();
+  }
 }
