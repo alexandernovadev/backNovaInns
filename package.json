@@ -5,6 +5,9 @@
   "author": "Nova Alex Labs",
   "private": true,
   "license": "UNLICENSED",
+  "engines": {
+    "node": ">=22.21.1 <23"
+  },
   "scripts": {
     "build": "node scripts/gen-version.mjs && nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
