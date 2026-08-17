@@ -1,8 +1,11 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, BadRequestException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Booking, BookingDocument } from '../bookings';
 import { Apartment, ApartmentDocument } from '../apartments';
+import { Expense, ExpenseDocument } from '../expenses';
+
+export type ClearableModel = 'bookings' | 'apartments' | 'expenses';
 
 @Injectable()
 export class DataService {
@@ -10,6 +13,7 @@ export class DataService {
     @InjectModel(Booking.name) private bookingModel: Model<BookingDocument>,
     @InjectModel(Apartment.name)
     private apartmentModel: Model<ApartmentDocument>,
+    @InjectModel(Expense.name) private expenseModel: Model<ExpenseDocument>,
   ) {}
 
   // ── EXPORT ──────────────────────────────────────────────
@@ -64,5 +68,30 @@ export class DataService {
     records: any[],
   ): Promise<{ inserted: number; updated: number }> {
     return this.importRecords(this.apartmentModel, records);
+  }
+
+  // ── COUNTS ─────────────────────────────────────────────
+  async counts(): Promise<Record<ClearableModel, number>> {
+    const [bookings, apartments, expenses] = await Promise.all([
+      this.bookingModel.countDocuments(),
+      this.apartmentModel.countDocuments(),
+      this.expenseModel.countDocuments(),
+    ]);
+    return { bookings, apartments, expenses };
+  }
+
+  // ── CLEAR ──────────────────────────────────────────────
+  async clear(model: ClearableModel): Promise<{ deleted: number }> {
+    const models: Record<ClearableModel, Model<any>> = {
+      bookings: this.bookingModel,
+      apartments: this.apartmentModel,
+      expenses: this.expenseModel,
+    };
+
+    const target = models[model];
+    if (!target) throw new BadRequestException('Modelo no permitido');
+
+    const result = await target.deleteMany({});
+    return { deleted: result.deletedCount };
   }
 }
