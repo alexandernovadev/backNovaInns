@@ -1,0 +1,7 @@
+# Nixpacks trae corepack 0.24.1, que no puede ejecutar pnpm 12.
+# Instalamos pnpm directo con la misma versión que packageManager en package.json.
+[variables]
+NIXPACKS_NODE_VERSION = "24"
+
+[phases.install]
+cmds = ["npm install -g pnpm@12.11.2", "pnpm install --frozen-lockfile"]
