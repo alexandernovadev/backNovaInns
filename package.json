@@ -4,6 +4,7 @@
   "description": "Sistema de gestión de apartamentos de alquiler corto — Nova Inns",
   "author": "Nova Alex Labs",
   "private": true,
+  "packageManager": "pnpm@12.11.2",
   "license": "UNLICENSED",
   "engines": {
     "node": ">=22 <23"
