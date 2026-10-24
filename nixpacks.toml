@@ -1,7 +1,8 @@
-# Nixpacks trae corepack 0.24.1, que no puede ejecutar pnpm 12.
-# Instalamos pnpm directo con la misma versión que packageManager en package.json.
-[variables]
-NIXPACKS_NODE_VERSION = "24"
+# Nixpacks agrega pnpm 9 (vía Nix) y corepack 0.24.1; ninguno sirve con pnpm 12.
+# Solo instalamos Node 24 (sin '...' se reemplazan los paquetes por defecto, así no entra pnpm-9_x)
+# y luego pnpm 12 con npm, igual que en local.
+[phases.setup]
+nixPkgs = ["nodejs_24"]
 
 [phases.install]
-cmds = ["npm install -g pnpm@12.11.2", "pnpm install --frozen-lockfile"]
+cmds = ["npm install -g pnpm@12.11.2", "pnpm --version", "pnpm install --frozen-lockfile"]
