@@ -30,7 +30,7 @@ export class DataService {
 
   // ── IMPORT ──────────────────────────────────────────────
   private async importRecords<T>(
-    model: Model<T>,
+    model: Model<T, any, any, any, any, any, any>,
     records: any[],
   ): Promise<{ inserted: number; updated: number }> {
     let inserted = 0;

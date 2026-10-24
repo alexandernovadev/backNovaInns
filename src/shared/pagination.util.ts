@@ -15,7 +15,7 @@ export interface PaginateOptions<T> {
 }
 
 export async function paginate<T>(
-  model: Model<T>,
+  model: Model<T, any, any, any, any, any, any>,
   opts: PaginateOptions<T> = {},
 ): Promise<PaginatedResult<T>> {
   const {
