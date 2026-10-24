@@ -1,5 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument, Types } from 'mongoose';
+import { toTitleCase } from '../../../shared/text.util';
 
 export type BookingDocument = HydratedDocument<Booking>;
 
@@ -21,7 +22,7 @@ const locationDef = {
 
 const guestDef = {
   _id: false,
-  fullName: { type: String, default: '' },
+  fullName: { type: String, default: '', set: toTitleCase },
   idNumber: { type: String, default: '' },
   birthDate: { type: String, default: undefined },
   location: { type: locationDef, default: undefined },
