@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { Booking, BookingDocument } from './schemas/booking.schema';
 import { paginate } from '../../shared/pagination.util';
 
@@ -20,13 +20,15 @@ export class BookingsService {
       status?: string;
       lifecycle?: string;
       platform?: string;
+      apartmentId?: string;
       page?: number;
       limit?: number;
       fromDate?: string;
       toDate?: string;
     } = {},
   ) {
-    const { search, status, lifecycle, platform, fromDate, toDate } = query;
+    const { search, status, lifecycle, platform, apartmentId, fromDate, toDate } =
+      query;
     const filter: Record<string, any> = {};
 
     if (search)
@@ -34,6 +36,7 @@ export class BookingsService {
     if (status) filter['billing.status'] = status;
     if (lifecycle) filter['stay.status'] = lifecycle;
     if (platform) filter['billing.platform'] = platform;
+    if (apartmentId) filter.apartmentId = apartmentId;
     // Filtro por rango de fechas de checkIn (mes calendario)
     if (fromDate || toDate) {
       filter['stay.checkIn'] = {};
@@ -121,8 +124,15 @@ export class BookingsService {
   }
 
   // Resumen financiero: total esperado, recibido y pendiente
-  async financialSummary(fromDate?: string, toDate?: string) {
+  async financialSummary(
+    fromDate?: string,
+    toDate?: string,
+    apartmentId?: string,
+  ) {
     const match: Record<string, any> = { 'billing.status': { $ne: 'NO SHOW' } };
+    // aggregate no castea strings a ObjectId
+    if (apartmentId && Types.ObjectId.isValid(apartmentId))
+      match.apartmentId = new Types.ObjectId(apartmentId);
     if (fromDate || toDate) {
       match['stay.checkIn'] = {};
       if (fromDate) match['stay.checkIn'].$gte = new Date(fromDate);

@@ -29,6 +29,7 @@ export class BookingsController {
       search?: string;
       status?: string;
       platform?: string;
+      apartmentId?: string;
       page?: number;
       limit?: number;
     },
@@ -45,8 +46,9 @@ export class BookingsController {
   financialSummary(
     @Query('fromDate') fromDate?: string,
     @Query('toDate') toDate?: string,
+    @Query('apartmentId') apartmentId?: string,
   ) {
-    return this.bookingsService.financialSummary(fromDate, toDate);
+    return this.bookingsService.financialSummary(fromDate, toDate, apartmentId);
   }
 
   @Get(':id')
