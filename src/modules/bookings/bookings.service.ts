@@ -1,8 +1,18 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { Model } from 'mongoose';
 import { Booking, BookingDocument } from './schemas/booking.schema';
 import { paginate } from '../../shared/pagination.util';
+
+export interface BookingFilters {
+  search?: string;
+  status?: string;
+  lifecycle?: string;
+  platform?: string;
+  apartmentId?: string;
+  fromDate?: string;
+  toDate?: string;
+}
 
 @Injectable()
 export class BookingsService {
@@ -15,20 +25,28 @@ export class BookingsService {
   }
 
   async findAll(
-    query: {
-      search?: string;
-      status?: string;
-      lifecycle?: string;
-      platform?: string;
-      apartmentId?: string;
-      page?: number;
-      limit?: number;
-      fromDate?: string;
-      toDate?: string;
-    } = {},
+    query: BookingFilters & { page?: number; limit?: number } = {},
   ) {
-    const { search, status, lifecycle, platform, apartmentId, fromDate, toDate } =
-      query;
+    return paginate(this.bookingModel, {
+      filter: this.buildFilter(query),
+      page: query.page,
+      limit: query.limit ?? 20,
+      sort: { 'stay.checkIn': 1 },
+      populate: { path: 'apartmentId', select: 'internalName status' },
+    });
+  }
+
+  // Filtros compartidos por la lista y el resumen financiero
+  private buildFilter(query: BookingFilters): Record<string, any> {
+    const {
+      search,
+      status,
+      lifecycle,
+      platform,
+      apartmentId,
+      fromDate,
+      toDate,
+    } = query;
     const filter: Record<string, any> = {};
 
     if (search)
@@ -44,13 +62,7 @@ export class BookingsService {
       if (toDate) filter['stay.checkIn'].$lt = new Date(toDate);
     }
 
-    return paginate(this.bookingModel, {
-      filter,
-      page: query.page,
-      limit: query.limit ?? 20,
-      sort: { 'stay.checkIn': 1 },
-      populate: { path: 'apartmentId', select: 'internalName status' },
-    });
+    return filter;
   }
 
   async findById(id: string): Promise<BookingDocument> {
@@ -124,20 +136,13 @@ export class BookingsService {
   }
 
   // Resumen financiero: total esperado, recibido y pendiente
-  async financialSummary(
-    fromDate?: string,
-    toDate?: string,
-    apartmentId?: string,
-  ) {
-    const match: Record<string, any> = { 'billing.status': { $ne: 'NO SHOW' } };
-    // aggregate no castea strings a ObjectId
-    if (apartmentId && Types.ObjectId.isValid(apartmentId))
-      match.apartmentId = new Types.ObjectId(apartmentId);
-    if (fromDate || toDate) {
-      match['stay.checkIn'] = {};
-      if (fromDate) match['stay.checkIn'].$gte = new Date(fromDate);
-      if (toDate) match['stay.checkIn'].$lt = new Date(toDate);
-    }
+  async financialSummary(query: BookingFilters = {}) {
+    // Mismos filtros que la lista. apartmentId se guarda como string (el schema
+    // lo resuelve como Mixed), así que no se castea a ObjectId. NO SHOW nunca suma.
+    const match = this.buildFilter(query);
+    match['billing.status'] = query.status
+      ? { $eq: query.status, $ne: 'NO SHOW' }
+      : { $ne: 'NO SHOW' };
     const result = await this.bookingModel.aggregate([
       { $match: match },
       {

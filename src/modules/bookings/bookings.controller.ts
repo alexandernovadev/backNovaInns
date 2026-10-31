@@ -9,7 +9,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { BookingsService } from './bookings.service';
+import { BookingsService, type BookingFilters } from './bookings.service';
 import { JwtAuthGuard } from '../auth';
 
 @UseGuards(JwtAuthGuard)
@@ -43,12 +43,8 @@ export class BookingsController {
   }
 
   @Get('summary/financial')
-  financialSummary(
-    @Query('fromDate') fromDate?: string,
-    @Query('toDate') toDate?: string,
-    @Query('apartmentId') apartmentId?: string,
-  ) {
-    return this.bookingsService.financialSummary(fromDate, toDate, apartmentId);
+  financialSummary(@Query() query: BookingFilters) {
+    return this.bookingsService.financialSummary(query);
   }
 
   @Get(':id')
