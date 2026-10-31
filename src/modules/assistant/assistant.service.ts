@@ -28,7 +28,8 @@ export class AssistantService {
 
   // Screenshot de Booking / AirBnB → JSON con la forma de POST /bookings (sin apartmentId)
   async extractBooking(file: Express.Multer.File, hint?: string) {
-    const model = this.config.get<string>('GEMINI_MODEL') ?? 'gemini-3.8-flash';
+    const model =
+      this.config.get<string>('GEMINI_MODEL') ?? 'gemini-3.5-flash-lite';
     const text = hint?.trim()
       ? `Lee esta reserva. Nota del usuario: ${hint.trim()}`
       : 'Lee esta reserva.';
@@ -51,8 +52,8 @@ export class AssistantService {
           mime_type: 'application/json',
           schema: BOOKING_EXTRACTION_SCHEMA,
         },
-        // Extracción simple: con más razonamiento tardaba ~2 min sin ganar precisión
-        generation_config: { thinking_level: 'low' },
+        // Extracción simple: que lea rápido y casi no razone
+        generation_config: { thinking_level: 'minimal' },
         // Datos de huéspedes: que Google no guarde la conversación
         store: false,
       });
