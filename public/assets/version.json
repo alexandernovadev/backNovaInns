@@ -1,8 +1,8 @@
 {
   "name": "nova-inns-apartments",
-  "version": "3.5.14",
+  "version": "3.5.15",
   "environment": "development",
-  "releaseDate": "30 de octubre de 2026 a las 10:06 p. m.",
-  "timestamp": "2026-10-31T03:06:53.329Z",
+  "releaseDate": "30 de octubre de 2026 a las 10:30 p. m.",
+  "timestamp": "2026-10-31T03:30:42.541Z",
   "nodeVersion": "v24.22.0"
 }

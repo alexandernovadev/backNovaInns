@@ -1,6 +1,6 @@
 {
   "name": "nova-inns-apartments",
-  "version": "3.5.14",
+  "version": "3.5.15",
   "description": "Sistema de gestión de apartamentos de alquiler corto — Nova Inns",
   "author": "Nova Alex Labs",
   "private": true,
@@ -25,6 +25,7 @@
     "migrate:extra-services": "ts-node scripts/migrate-extra-services.ts"
   },
   "dependencies": {
+    "@google/genai": "^2.32.0",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.4",
     "@nestjs/core": "^11.0.1",

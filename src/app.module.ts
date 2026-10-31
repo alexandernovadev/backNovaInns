@@ -12,6 +12,7 @@ import { UploadModule } from './modules/upload/upload.module';
 import { DataModule } from './modules/data/data.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { ExpensesModule } from './modules/expenses/expenses.module';
+import { AssistantModule } from './modules/assistant/assistant.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { ExpensesModule } from './modules/expenses/expenses.module';
     DataModule,
     AnalyticsModule,
     ExpensesModule,
+    AssistantModule,
   ],
   controllers: [AppController],
   providers: [AppService],
