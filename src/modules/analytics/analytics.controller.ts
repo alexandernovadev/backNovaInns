@@ -8,8 +8,12 @@ export class AnalyticsController {
   constructor(private readonly analyticsService: AnalyticsService) {}
 
   @Get('dashboard')
-  dashboard(@Query('from') from?: string, @Query('to') to?: string) {
-    return this.analyticsService.dashboard(from, to);
+  dashboard(
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('apartmentId') apartmentId?: string,
+  ) {
+    return this.analyticsService.dashboard(from, to, apartmentId);
   }
 
   @Get('regions')
@@ -18,12 +22,23 @@ export class AnalyticsController {
     @Query('groupBy') groupBy?: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
+    @Query('apartmentId') apartmentId?: string,
   ) {
-    return this.analyticsService.guestsByRegion(country, groupBy, from, to);
+    return this.analyticsService.guestsByRegion(
+      country,
+      groupBy,
+      from,
+      to,
+      apartmentId,
+    );
   }
 
   @Get('vacancy')
-  vacancy(@Query('from') from?: string, @Query('to') to?: string) {
-    return this.analyticsService.vacancy(from, to);
+  vacancy(
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('apartmentId') apartmentId?: string,
+  ) {
+    return this.analyticsService.vacancy(from, to, apartmentId);
   }
 }

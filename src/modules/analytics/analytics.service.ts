@@ -12,19 +12,35 @@ export class AnalyticsService {
     @InjectModel(Apartment.name) private aptModel: Model<ApartmentDocument>,
   ) {}
 
-  async dashboard(from?: string, to?: string) {
-    const dateFilter = this.dateMatch(from, to);
-    const [summary, monthly, platforms, payments, dayOfWeek, countries] =
-      await Promise.all([
-        this.summary(dateFilter),
-        this.revenueByMonth(dateFilter),
-        this.platformDistribution(dateFilter),
-        this.paymentMethodDistribution(dateFilter),
-        this.dayOfWeekDistribution(dateFilter),
-        this.guestsByCountry(dateFilter),
-      ]);
+  async dashboard(from?: string, to?: string, apartmentId?: string) {
+    const match = this.baseMatch(from, to, apartmentId);
+    const [
+      summary,
+      monthly,
+      platforms,
+      payments,
+      dayOfWeek,
+      countries,
+      apartments,
+    ] = await Promise.all([
+      this.summary(match),
+      this.revenueByMonth(match),
+      this.platformDistribution(match),
+      this.paymentMethodDistribution(match),
+      this.dayOfWeekDistribution(match),
+      this.guestsByCountry(match),
+      this.revenueByApartment(match),
+    ]);
 
-    return { summary, monthly, platforms, payments, dayOfWeek, countries };
+    return {
+      summary,
+      monthly,
+      platforms,
+      payments,
+      dayOfWeek,
+      countries,
+      apartments,
+    };
   }
 
   // ── helpers ──
@@ -36,11 +52,28 @@ export class AnalyticsService {
     return { 'stay.checkIn': f };
   }
 
+  // Filtro común: fechas + apartamento, sin NO SHOW en ninguna métrica.
+  // apartmentId se guarda como string (el schema lo resuelve como Mixed), no se castea.
+  private baseMatch(
+    from?: string,
+    to?: string,
+    apartmentId?: string,
+  ): Record<string, any> {
+    return {
+      ...this.dateMatch(from, to),
+      ...(apartmentId ? { apartmentId } : {}),
+      'billing.status': { $ne: 'NO SHOW' },
+    };
+  }
+
+  private async apartmentNames(): Promise<Map<string, string>> {
+    const apts = await this.aptModel.find({}, 'internalName').lean();
+    return new Map(apts.map((a) => [String(a._id), a.internalName]));
+  }
+
   // ── 1. summary ──
   private async summary(match: Record<string, any>) {
-    const pipe: any[] = [
-      { $match: { ...match, 'billing.status': { $ne: 'NO SHOW' } } },
-    ];
+    const pipe: any[] = [{ $match: match }];
     pipe.push({
       $group: {
         _id: null,
@@ -81,7 +114,7 @@ export class AnalyticsService {
   // ── 2. revenue by calendar month ──
   private async revenueByMonth(match: Record<string, any>) {
     const pipe: any[] = [
-      { $match: { ...match, 'billing.status': { $ne: 'NO SHOW' } } },
+      { $match: match },
       {
         $project: {
           checkIn: '$stay.checkIn',
@@ -267,11 +300,48 @@ export class AnalyticsService {
     );
   }
 
-  // ── 7. vacancy (unsold days) — mes calendario ──
-  async vacancy(from?: string, to?: string) {
-    const totalApts = await this.aptModel.countDocuments({
-      status: ApartmentStatus.ACTIVE,
-    });
+  // ── 7. revenue by apartment (comparativo) ──
+  private async revenueByApartment(match: Record<string, any>) {
+    const [rows, names] = await Promise.all([
+      this.bookingModel.aggregate([
+        { $match: match },
+        {
+          $group: {
+            _id: '$apartmentId',
+            expected: { $sum: '$billing.totalAmount' },
+            received: { $sum: '$billing.amountReceived' },
+            count: { $sum: 1 },
+            nights: {
+              $sum: {
+                $divide: [
+                  { $subtract: ['$stay.checkOut', '$stay.checkIn'] },
+                  86400000,
+                ],
+              },
+            },
+          },
+        },
+        { $sort: { expected: -1 } },
+      ]),
+      this.apartmentNames(),
+    ]);
+    return rows.map((r) => ({
+      apartmentId: String(r._id),
+      name: names.get(String(r._id)) ?? 'Sin apartamento',
+      expected: r.expected,
+      received: r.received,
+      pending: r.expected - r.received,
+      count: r.count,
+      nights: Math.round(r.nights),
+    }));
+  }
+
+  // ── 8. vacancy (unsold days) — mes calendario ──
+  async vacancy(from?: string, to?: string, apartmentId?: string) {
+    const aptFilter: Record<string, any> = { status: ApartmentStatus.ACTIVE };
+    if (apartmentId) aptFilter._id = apartmentId;
+    const apts = await this.aptModel.find(aptFilter, 'internalName').lean();
+    const aptIds = apts.map((a) => String(a._id));
 
     // Default: mes calendario actual (1ro → 1ro del mes siguiente)
     const now = new Date();
@@ -282,10 +352,27 @@ export class AnalyticsService {
       ? new Date(to)
       : new Date(now.getFullYear(), now.getMonth() + 1, 1);
 
-    // Single aggregation: expand each booking into individual days, count per date
-    const daily = await this.bookingModel.aggregate([
+    // Cada apto cuenta como disponible desde su primera reserva (createdAt no
+    // sirve: los datos se migran). Sin reservas → disponible desde hoy.
+    const todayKey = now.toISOString().slice(0, 10);
+    const firsts = await this.bookingModel.aggregate([
       {
         $match: {
+          apartmentId: { $in: aptIds },
+          'billing.status': { $ne: 'NO SHOW' },
+        },
+      },
+      { $group: { _id: '$apartmentId', first: { $min: '$stay.checkIn' } } },
+    ]);
+    const startKey = new Map(aptIds.map((id) => [id, todayKey]));
+    for (const f of firsts)
+      startKey.set(String(f._id), new Date(f.first).toISOString().slice(0, 10));
+
+    // Expande cada reserva en días ocupados, por apto
+    const occupiedRows = await this.bookingModel.aggregate([
+      {
+        $match: {
+          apartmentId: { $in: aptIds },
           'stay.checkIn': { $lt: tDate },
           'stay.checkOut': { $gt: fDate },
           'billing.status': { $ne: 'NO SHOW' },
@@ -323,29 +410,18 @@ export class AnalyticsService {
       { $match: { date: { $gte: fDate, $lt: tDate } } },
       {
         $group: {
-          _id: { $dateToString: { format: '%Y-%m-%d', date: '$date' } },
-          booked: { $sum: 1 },
+          _id: {
+            date: { $dateToString: { format: '%Y-%m-%d', date: '$date' } },
+            apt: '$apartmentId',
+          },
         },
       },
-      { $sort: { _id: 1 } },
     ]);
+    // Un apto ocupa como máximo un slot por día, aunque se crucen reservas
+    const occupied = new Set(
+      occupiedRows.map((r) => `${r._id.date}|${String(r._id.apt)}`),
+    );
 
-    // Build daily series with vacancy calculation
-    const dayMap = new Map(daily.map((d) => [d._id, d.booked]));
-    const dailySeries: { date: string; booked: number; vacant: number }[] = [];
-    let totalUnsoldDays = 0;
-    let totalDaySlots = 0;
-
-    for (let d = new Date(fDate); d < tDate; d.setDate(d.getDate() + 1)) {
-      const key = d.toISOString().slice(0, 10);
-      const booked = dayMap.get(key) || 0;
-      const vacant = totalApts - booked;
-      dailySeries.push({ date: key, booked, vacant });
-      totalUnsoldDays += vacant;
-      totalDaySlots += totalApts;
-    }
-
-    // Monthly aggregation — agrupado por mes calendario
     const monthNames = [
       'Ene',
       'Feb',
@@ -360,53 +436,101 @@ export class AnalyticsService {
       'Nov',
       'Dic',
     ];
-    const monthLabel = (d: Date) => {
-      const m = d.getUTCMonth();
-      const y = d.getUTCFullYear();
-      return `${monthNames[m]} ${String(y).slice(2)}`;
-    };
+    const monthLabel = (d: Date) =>
+      `${monthNames[d.getUTCMonth()]} ${String(d.getUTCFullYear()).slice(2)}`;
+
+    const dailySeries: { date: string; booked: number; vacant: number }[] = [];
+    const perApt = new Map(
+      aptIds.map((id) => [id, { occupiedDays: 0, availableDays: 0 }]),
+    );
+    // Map conserva el orden de inserción → meses en orden cronológico
     const monthlyMap = new Map<
       string,
-      { unsoldDays: number; availableDays: number; daysInCycle: number }
+      {
+        unsoldDays: number;
+        availableDays: number;
+        daysInCycle: number;
+        apts: Set<string>;
+      }
     >();
-    for (const day of dailySeries) {
-      const key = monthLabel(new Date(day.date));
-      if (!monthlyMap.has(key))
-        monthlyMap.set(key, {
+    let totalUnsoldDays = 0;
+    let totalDaySlots = 0;
+
+    for (let d = new Date(fDate); d < tDate; d.setDate(d.getDate() + 1)) {
+      const key = d.toISOString().slice(0, 10);
+      const label = monthLabel(new Date(key));
+      if (!monthlyMap.has(label))
+        monthlyMap.set(label, {
           unsoldDays: 0,
           availableDays: 0,
           daysInCycle: 0,
+          apts: new Set(),
         });
-      const rec = monthlyMap.get(key)!;
-      rec.unsoldDays += day.vacant;
-      rec.availableDays += totalApts;
+      const rec = monthlyMap.get(label)!;
+
+      let available = 0;
+      let booked = 0;
+      for (const id of aptIds) {
+        if (startKey.get(id)! > key) continue;
+        const stats = perApt.get(id)!;
+        available++;
+        stats.availableDays++;
+        rec.apts.add(id);
+        if (occupied.has(`${key}|${id}`)) {
+          booked++;
+          stats.occupiedDays++;
+        }
+      }
+      const vacant = available - booked;
+      dailySeries.push({ date: key, booked, vacant });
+      totalUnsoldDays += vacant;
+      totalDaySlots += available;
+      rec.unsoldDays += vacant;
+      rec.availableDays += available;
       rec.daysInCycle += 1;
     }
-    const monthly = Array.from(monthlyMap.entries())
-      .map(([label, v]) => ({
+
+    const pct = (part: number, whole: number) =>
+      whole > 0 ? Math.round((part / whole) * 100 * 10) / 10 : 0;
+
+    const monthly = Array.from(monthlyMap.entries()).map(([label, v]) => {
+      const n = v.apts.size;
+      return {
         label,
         unsoldDays: v.unsoldDays,
         availableDays: v.availableDays,
-        vacancyPct:
-          Math.round((v.unsoldDays / v.availableDays) * 100 * 10) / 10,
+        vacancyPct: pct(v.unsoldDays, v.availableDays),
         daysInCycle: v.daysInCycle,
-        avgUnsoldPerApt: Math.round(v.unsoldDays / totalApts),
-        avgOccupiedPerApt: Math.round(
-          (v.availableDays - v.unsoldDays) / totalApts,
-        ),
-      }))
-      .sort((a, b) => a.label.localeCompare(b.label));
+        avgUnsoldPerApt: n > 0 ? Math.round(v.unsoldDays / n) : 0,
+        avgOccupiedPerApt:
+          n > 0 ? Math.round((v.availableDays - v.unsoldDays) / n) : 0,
+      };
+    });
 
+    const names = new Map(apts.map((a) => [String(a._id), a.internalName]));
+    const byApartment = aptIds
+      .map((id) => {
+        const s = perApt.get(id)!;
+        return {
+          apartmentId: id,
+          name: names.get(id) ?? id,
+          occupiedDays: s.occupiedDays,
+          availableDays: s.availableDays,
+          occupancyPct: pct(s.occupiedDays, s.availableDays),
+        };
+      })
+      .filter((a) => a.availableDays > 0)
+      .sort((a, b) => b.occupancyPct - a.occupancyPct);
+
+    // Solo cuentan los aptos que estaban operando en el período
+    const totalApts = byApartment.length;
     const rangeDays = Math.floor(
       (tDate.getTime() - fDate.getTime()) / 86400000,
     );
     return {
       totalUnsoldDays,
       totalDaySlots,
-      vacancyRate:
-        totalDaySlots > 0
-          ? Math.round((totalUnsoldDays / totalDaySlots) * 100 * 10) / 10
-          : 0,
+      vacancyRate: pct(totalUnsoldDays, totalDaySlots),
       avgUnsoldPerApt:
         totalApts > 0 ? Math.round(totalUnsoldDays / totalApts) : 0,
       avgOccupiedPerApt:
@@ -417,6 +541,7 @@ export class AnalyticsService {
       totalApts,
       daily: dailySeries,
       monthly,
+      byApartment,
     };
   }
 
@@ -426,10 +551,10 @@ export class AnalyticsService {
     groupBy?: string,
     from?: string,
     to?: string,
+    apartmentId?: string,
   ) {
-    const dateFilter = this.dateMatch(from, to);
     const match = {
-      ...dateFilter,
+      ...this.baseMatch(from, to, apartmentId),
       'group.host.location.countryCode': countryCode,
     };
     const pipe: any[] = [
