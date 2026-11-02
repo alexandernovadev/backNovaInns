@@ -63,6 +63,13 @@ export class AssistantController {
     return this.novaAiService.chat(messages, userId ?? null);
   }
 
+  /** POST /api/assistant/actions/:id/confirm — ejecuta una propuesta de NovaAI */
+  @Post('actions/:id/confirm')
+  confirmAction(@Param('id') id: string, @Req() req: Request) {
+    const { userId } = (req.user ?? {}) as { userId?: string };
+    return this.proposals.confirm(id, userId ?? null);
+  }
+
   /** POST /api/assistant/actions/:id/cancel — descarta una propuesta de NovaAI */
   @Post('actions/:id/cancel')
   cancelAction(@Param('id') id: string) {

@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectConnection, InjectModel } from '@nestjs/mongoose';
 import { Connection, Model, mongo } from 'mongoose';
 import { Booking } from '../bookings';
@@ -201,7 +205,110 @@ export class NovaAiProposals {
     return { id: String(action._id), status: action.status };
   }
 
+  // Ejecuta una propuesta pendiente. Solo una vez (claim atómico), dentro del
+  // plazo, y solo si los documentos siguen exactamente como cuando se propuso
+  async confirm(id: string, userId: string | null) {
+    if (!ObjectId.isValid(id))
+      throw new NotFoundException('Propuesta no encontrada');
+    const now = new Date();
+    const action = await this.actionModel.findOneAndUpdate(
+      { _id: id, status: 'pending', expiresAt: { $gt: now } },
+      { $set: { status: 'confirmed', confirmedAt: now, confirmedBy: userId } },
+      { returnDocument: 'after' },
+    );
+    if (!action) {
+      const current = await this.actionModel.findById(id);
+      if (!current) throw new NotFoundException('Propuesta no encontrada');
+      if (current.status === 'pending') {
+        current.status = 'expired';
+        await current.save();
+        throw new ConflictException({
+          statusCode: 409,
+          status: 'expired',
+          message:
+            'La propuesta venció (10 minutos). Pídele a NovaAI que la vuelva a armar.',
+        });
+      }
+      throw new ConflictException({
+        statusCode: 409,
+        status: current.status,
+        message: `La propuesta ya no está pendiente (${current.status})`,
+      });
+    }
+
+    const col = this.connection.db!.collection(action.targetCollection);
+    const fail = async (error: string) => {
+      action.status = 'failed';
+      action.error = error;
+      action.markModified('targets');
+      await action.save();
+      throw new ConflictException({
+        statusCode: 409,
+        status: 'failed',
+        message: error,
+      });
+    };
+
+    // 1. Nada cambió desde la propuesta (si cambió, no se pisa)
+    for (const t of action.targets) {
+      const current = await col.findOne({ _id: new ObjectId(t.id) });
+      if (!current)
+        return fail(`"${t.label}" ya no existe. No se hizo ningún cambio.`);
+      if (!this.sameDoc(current, t.before))
+        return fail(
+          `"${t.label}" cambió después de la propuesta. No se hizo ningún cambio; pídele a NovaAI que la vuelva a armar.`,
+        );
+    }
+
+    // 2. Ejecutar. El filtro por updatedAt evita pisar un cambio que llegue justo ahora
+    for (const t of action.targets) {
+      const filter: Record<string, unknown> = { _id: new ObjectId(t.id) };
+      if (t.before.updatedAt) filter.updatedAt = t.before.updatedAt;
+      try {
+        if (action.type === 'delete') {
+          const r = await col.deleteOne(filter);
+          if (!r.deletedCount)
+            return fail(`"${t.label}" cambió justo antes de eliminarla.`);
+          t.after = null;
+        } else {
+          const set = Object.fromEntries(
+            t.changes.map((c) => [c.field, c.after]),
+          );
+          const r = await col.updateOne(filter, {
+            $set: { ...set, updatedAt: now },
+          });
+          if (!r.matchedCount)
+            return fail(`"${t.label}" cambió justo antes de guardarla.`);
+          t.after = await col.findOne({ _id: new ObjectId(t.id) });
+        }
+      } catch (err) {
+        return fail(`Error al guardar "${t.label}": ${(err as Error).message}`);
+      }
+    }
+
+    action.markModified('targets');
+    await action.save();
+    return { id: String(action._id), status: action.status };
+  }
+
   // ── helpers ──
+
+  // Compara dos documentos sin importar el orden de las llaves
+  private sameDoc(a: unknown, b: unknown) {
+    const canon = (v: unknown): unknown =>
+      Array.isArray(v)
+        ? v.map(canon)
+        : v && typeof v === 'object'
+          ? Object.fromEntries(
+              Object.keys(v)
+                .sort()
+                .map((k) => [k, canon((v as Record<string, unknown>)[k])]),
+            )
+          : v;
+    const norm = (v: unknown) =>
+      JSON.stringify(canon(EJSON.serialize(v, { relaxed: true })));
+    return norm(a) === norm(b);
+  }
 
   private async loadTargets(col: CollectionName, rawIds: unknown) {
     if (!Array.isArray(rawIds) || !rawIds.length)

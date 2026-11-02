@@ -15,6 +15,8 @@ export interface ActionTarget {
   // Documento completo antes del cambio: sirve para mostrarlo y para deshacer
   before: Record<string, unknown>;
   changes: ActionChange[];
+  // Documento después de confirmar (null si se eliminó): el deshacer compara contra esto
+  after?: Record<string, unknown> | null;
 }
 
 // Historial de cambios propuestos por NovaAI (y, desde el paso 4, ejecutados)
@@ -48,6 +50,16 @@ export class AssistantAction {
 
   @Prop({ required: true })
   expiresAt!: Date;
+
+  @Prop({ type: Date, default: null })
+  confirmedAt!: Date | null;
+
+  @Prop({ type: String, default: null })
+  confirmedBy!: string | null;
+
+  // Por qué falló (documento cambiado, vencida, error de Mongo...)
+  @Prop({ type: String, default: null })
+  error!: string | null;
 }
 
 export const AssistantActionSchema =
