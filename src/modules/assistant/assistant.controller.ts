@@ -10,6 +10,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { AssistantService } from './assistant.service';
+import { NovaAiService } from './nova-ai.service';
 import { JwtAuthGuard } from '../auth';
 
 const imageFilter = (_: any, file: Express.Multer.File, cb: any) => {
@@ -22,7 +23,10 @@ const imageFilter = (_: any, file: Express.Multer.File, cb: any) => {
 @UseGuards(JwtAuthGuard)
 @Controller('assistant')
 export class AssistantController {
-  constructor(private readonly assistantService: AssistantService) {}
+  constructor(
+    private readonly assistantService: AssistantService,
+    private readonly novaAiService: NovaAiService,
+  ) {}
 
   /**
    * POST /api/assistant/extract-booking
@@ -42,5 +46,14 @@ export class AssistantController {
   ) {
     if (!file) throw new BadRequestException('Falta la imagen (campo "file")');
     return this.assistantService.extractBooking(file, hint);
+  }
+
+  /**
+   * POST /api/assistant/chat
+   * body: { messages: [{ role: 'user' | 'model', text }] } — historial completo, último = user
+   */
+  @Post('chat')
+  chat(@Body('messages') messages: unknown) {
+    return this.novaAiService.chat(messages);
   }
 }
