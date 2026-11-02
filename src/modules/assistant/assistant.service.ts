@@ -79,6 +79,23 @@ export class AssistantService {
     if (typeof booking.observations === 'string')
       booking.observations = booking.observations.replace(/\\n/g, '\n');
 
+    // totalAmount se calcula aquí (basePrice + extras): el modelo a veces copia
+    // el total de la plataforma, y este número alimenta los totales de la app
+    const billing = booking.billing as
+      | {
+          basePrice?: number;
+          totalAmount?: number;
+          extraServices?: { price?: number; quantity?: number }[];
+        }
+      | undefined;
+    if (billing && typeof billing.basePrice === 'number') {
+      const extras = (billing.extraServices ?? []).reduce(
+        (sum, e) => sum + (e.price ?? 0) * (e.quantity ?? 1),
+        0,
+      );
+      billing.totalAmount = billing.basePrice + extras;
+    }
+
     return {
       booking,
       model,
