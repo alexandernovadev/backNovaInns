@@ -56,6 +56,55 @@ export class AssistantController {
   }
 
   /**
+   * POST /api/assistant/chat-image
+   * multipart: file (screenshot de Booking / AirBnB), hint (opcional)
+   * Lee la reserva y devuelve una propuesta "Crear reserva" con la misma forma que /chat
+   */
+  @Post('chat-image')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      fileFilter: imageFilter,
+      limits: { fileSize: 10 * 1024 * 1024 },
+    }),
+  )
+  async chatImage(
+    @UploadedFile() file: Express.Multer.File,
+    @Body('hint') hint: string | undefined,
+    @Req() req: Request,
+  ) {
+    if (!file) throw new BadRequestException('Falta la imagen (campo "file")');
+    const { userId } = (req.user ?? {}) as { userId?: string };
+    const { booking, model } = await this.assistantService.extractBooking(
+      file,
+      hint,
+    );
+    const card = await this.proposals.proposeCreate(
+      booking,
+      hint?.trim()
+        ? `📷 Screenshot · ${hint.trim()}`
+        : '📷 Screenshot de reserva',
+      userId ?? null,
+    );
+    const b = booking as {
+      group?: { host?: { fullName?: string } };
+      stay?: { checkIn?: string; checkOut?: string };
+      billing?: { platform?: string };
+    };
+    const lines = [
+      `Leí la reserva de **${b.group?.host?.fullName || 'un huésped'}**, del ${b.stay?.checkIn ?? '?'} al ${b.stay?.checkOut ?? '?'} por ${b.billing?.platform ?? '?'}.`,
+      ...card.warnings.map((w) => `⚠️ ${w}`),
+      'Revisa los datos, elige el apartamento en la tarjeta y confirma para crearla.',
+    ];
+    return {
+      reply: lines.join('\n\n'),
+      model,
+      queries: ['screenshot (lectura con IA)'],
+      actions: [card],
+    };
+  }
+
+  /**
    * POST /api/assistant/chat
    * body: { messages: [{ role: 'user' | 'model', text }] } — historial completo, último = user
    */
@@ -67,9 +116,13 @@ export class AssistantController {
 
   /** POST /api/assistant/actions/:id/confirm — ejecuta una propuesta de NovaAI */
   @Post('actions/:id/confirm')
-  confirmAction(@Param('id') id: string, @Req() req: Request) {
+  confirmAction(
+    @Param('id') id: string,
+    @Body('apartmentId') apartmentId: string | undefined,
+    @Req() req: Request,
+  ) {
     const { userId } = (req.user ?? {}) as { userId?: string };
-    return this.proposals.confirm(id, userId ?? null);
+    return this.proposals.confirm(id, userId ?? null, { apartmentId });
   }
 
   /** GET /api/assistant/actions?filter=applied|undone|other&page&limit — historial */

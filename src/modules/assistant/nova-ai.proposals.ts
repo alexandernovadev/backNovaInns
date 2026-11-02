@@ -94,10 +94,11 @@ export const NOVA_AI_PROPOSAL_TOOLS = [
 // Lo que ve el front en la tarjeta
 export interface ActionCard {
   id: string;
-  type: 'update' | 'delete' | 'undo';
+  type: 'create' | 'update' | 'delete' | 'undo';
   collection: CollectionName;
   status: string;
   summary: string;
+  warnings: string[];
   expiresAt: Date;
   targets: {
     id: string;
@@ -222,11 +223,112 @@ export class NovaAiProposals {
     return { id: String(action._id), status: action.status };
   }
 
+  // Reserva leída de un screenshot → propuesta "create". El _id se reserva ya,
+  // para que confirmar y deshacer apunten siempre al mismo documento.
+  async proposeCreate(
+    draft: Record<string, any>,
+    request: string,
+    userId: string | null,
+  ): Promise<ActionCard> {
+    const { _id: _ignored, apartmentId: _apt, ...data } = draft ?? {};
+    const _id = new ObjectId();
+    // apartmentId se elige al confirmar: aquí uno provisional solo para validar
+    const doc = new this.models.bookings({
+      ...data,
+      _id,
+      apartmentId: 'pending',
+    });
+    try {
+      await doc.validate();
+    } catch (err) {
+      const errors = (err as { errors?: Record<string, Error> }).errors;
+      throw new ConflictException({
+        statusCode: 409,
+        status: 'failed',
+        message: `La reserva leída no es válida: ${
+          errors
+            ? Object.values(errors)
+                .map((e) => e.message)
+                .join('; ')
+            : (err as Error).message
+        }`,
+      });
+    }
+    const plain = doc.toObject({ depopulate: true });
+    delete plain.apartmentId;
+
+    const names = await this.apartmentNames();
+    const label = this.label('bookings', plain, names).replace(
+      'apto desconocido',
+      'apto por elegir',
+    );
+    const action = await this.actionModel.create({
+      type: 'create',
+      targetCollection: 'bookings',
+      summary: `Crear reserva de ${plain.group?.host?.fullName ?? 'huésped'} (${plain.billing?.platform ?? 'sin plataforma'})`,
+      request: request.slice(0, 1000),
+      targets: [
+        { id: String(_id), label, before: {}, changes: [], draft: plain },
+      ],
+      warnings: await this.duplicates(plain, names),
+      userId,
+      expiresAt: new Date(Date.now() + EXPIRES_MS),
+    });
+    return this.toCard(action, names);
+  }
+
+  // Misma reserva ya registrada: mismo huésped y misma entrada, o mismo
+  // ID de Booking / código de AirBnB en las observaciones
+  private async duplicates(
+    b: Record<string, any>,
+    names: Map<string, string>,
+  ): Promise<string[]> {
+    const esc = (v: string) => v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const or: Record<string, unknown>[] = [];
+    const name = String(b.group?.host?.fullName ?? '').trim();
+    if (name && b.stay?.checkIn)
+      or.push({
+        'group.host.fullName': { $regex: `^${esc(name)}$`, $options: 'i' },
+        'stay.checkIn': b.stay.checkIn,
+      });
+    const code = /(?:ID Reserva|Codigo AirBnB):\s*(\S+)/i.exec(
+      String(b.observations ?? ''),
+    )?.[1];
+    if (code) or.push({ observations: { $regex: esc(code) } });
+    if (!or.length) return [];
+    const found = await this.connection
+      .db!.collection('bookings')
+      .find({ $or: or })
+      .limit(5)
+      .toArray();
+    return found.map(
+      (d) => `Posible duplicado: ya existe ${this.label('bookings', d, names)}`,
+    );
+  }
+
   // Ejecuta una propuesta pendiente. Solo una vez (claim atómico), dentro del
   // plazo, y solo si los documentos siguen exactamente como cuando se propuso
-  async confirm(id: string, userId: string | null) {
+  async confirm(
+    id: string,
+    userId: string | null,
+    options: { apartmentId?: string } = {},
+  ) {
     if (!ObjectId.isValid(id))
       throw new NotFoundException('Propuesta no encontrada');
+    // Crear una reserva exige elegir el apartamento (se valida antes de consumir la propuesta)
+    const pre = await this.actionModel.findById(id, { type: 1 });
+    let apartmentId: string | null = null;
+    if (pre?.type === 'create') {
+      try {
+        apartmentId = await this.checkApartment(options.apartmentId ?? '');
+      } catch {
+        throw new ConflictException({
+          statusCode: 409,
+          status: 'pending',
+          message: 'Elige el apartamento de la reserva antes de confirmar',
+        });
+      }
+    }
     const now = new Date();
     const action = await this.actionModel.findOneAndUpdate(
       { _id: id, status: 'pending', expiresAt: { $gt: now } },
@@ -266,41 +368,68 @@ export class NovaAiProposals {
       });
     };
 
-    // 1. Nada cambió desde la propuesta (si cambió, no se pisa)
-    for (const t of action.targets) {
-      const current = await col.findOne({ _id: new ObjectId(t.id) });
-      if (!current)
-        return fail(`"${t.label}" ya no existe. No se hizo ningún cambio.`);
-      if (!this.sameDoc(current, t.before))
-        return fail(
-          `"${t.label}" cambió después de la propuesta. No se hizo ningún cambio; pídele a NovaAI que la vuelva a armar.`,
-        );
-    }
-
-    // 2. Ejecutar. El filtro por updatedAt evita pisar un cambio que llegue justo ahora
-    for (const t of action.targets) {
-      const filter: Record<string, unknown> = { _id: new ObjectId(t.id) };
-      if (t.before.updatedAt) filter.updatedAt = t.before.updatedAt;
-      try {
-        if (action.type === 'delete') {
-          const r = await col.deleteOne(filter);
-          if (!r.deletedCount)
-            return fail(`"${t.label}" cambió justo antes de eliminarla.`);
-          t.after = null;
-        } else {
-          const set = Object.fromEntries(
-            t.changes.map((c) => [c.field, c.after]),
-          );
-          const r = await col.updateOne(filter, {
-            $set: { ...set, updatedAt: now },
-          });
-          if (!r.matchedCount)
-            return fail(`"${t.label}" cambió justo antes de guardarla.`);
-          t.after = await col.findOne({ _id: new ObjectId(t.id) });
+    // Cualquier error inesperado deja la propuesta como fallida, nunca como
+    // "confirmed" sin haberse aplicado
+    try {
+      // 1. Nada cambió desde la propuesta (si cambió, no se pisa)
+      for (const t of action.targets) {
+        const current = await col.findOne({ _id: new ObjectId(t.id) });
+        if (action.type === 'create') {
+          if (current) return fail(`"${t.label}" ya existe.`);
+          continue;
         }
-      } catch (err) {
-        return fail(`Error al guardar "${t.label}": ${(err as Error).message}`);
+        if (!current)
+          return fail(`"${t.label}" ya no existe. No se hizo ningún cambio.`);
+        if (!this.sameDoc(current, t.before))
+          return fail(
+            `"${t.label}" cambió después de la propuesta. No se hizo ningún cambio; pídele a NovaAI que la vuelva a armar.`,
+          );
       }
+
+      // 2. Ejecutar. El filtro por updatedAt evita pisar un cambio que llegue justo ahora
+      for (const t of action.targets) {
+        try {
+          // before puede faltar: Mongoose no guarda objetos vacíos (create)
+          const filter: Record<string, unknown> = { _id: new ObjectId(t.id) };
+          if (t.before?.updatedAt) filter.updatedAt = t.before.updatedAt;
+          if (action.type === 'create') {
+            // Por el modelo: castea fechas, aplica defaults y timestamps
+            await this.models.bookings.create({
+              ...t.draft,
+              _id: new ObjectId(t.id),
+              apartmentId,
+            });
+            t.after = await col.findOne({ _id: new ObjectId(t.id) });
+            t.label = this.label(
+              'bookings',
+              t.after!,
+              await this.apartmentNames(),
+            );
+          } else if (action.type === 'delete') {
+            const r = await col.deleteOne(filter);
+            if (!r.deletedCount)
+              return fail(`"${t.label}" cambió justo antes de eliminarla.`);
+            t.after = null;
+          } else {
+            const set = Object.fromEntries(
+              t.changes.map((c) => [c.field, c.after]),
+            );
+            const r = await col.updateOne(filter, {
+              $set: { ...set, updatedAt: now },
+            });
+            if (!r.matchedCount)
+              return fail(`"${t.label}" cambió justo antes de guardarla.`);
+            t.after = await col.findOne({ _id: new ObjectId(t.id) });
+          }
+        } catch (err) {
+          return fail(
+            `Error al guardar "${t.label}": ${(err as Error).message}`,
+          );
+        }
+      }
+    } catch (err) {
+      if (err instanceof ConflictException) throw err;
+      return fail(`Error inesperado: ${(err as Error).message}`);
     }
 
     action.markModified('targets');
@@ -366,7 +495,15 @@ export class NovaAiProposals {
     const drift: { label: string; fields: string[] }[] = [];
     for (const t of action.targets) {
       const current = await col.findOne({ _id: new ObjectId(t.id) });
-      if (action.type === 'delete') {
+      if (action.type === 'create') {
+        if (!current)
+          throw conflict(
+            'confirmed',
+            `"${t.label}" ya no existe (se borró después). No hay nada que deshacer.`,
+          );
+        const fields = this.changedPaths(t.after ?? {}, current);
+        if (fields.length) drift.push({ label: t.label, fields });
+      } else if (action.type === 'delete') {
         if (current)
           throw conflict(
             'confirmed',
@@ -385,7 +522,9 @@ export class NovaAiProposals {
     if (drift.length && !force)
       throw conflict(
         'changed',
-        'Este documento cambió después del cambio de NovaAI. Si deshaces igual, solo se restauran los campos que cambió NovaAI.',
+        action.type === 'create'
+          ? 'La reserva que creó NovaAI se editó después. Si deshaces igual, se elimina con esos cambios.'
+          : 'Este documento cambió después del cambio de NovaAI. Si deshaces igual, solo se restauran los campos que cambió NovaAI.',
         { drift },
       );
 
@@ -402,7 +541,18 @@ export class NovaAiProposals {
     try {
       for (const t of claimed.targets) {
         const _id = new ObjectId(t.id);
-        if (claimed.type === 'delete') {
+        if (claimed.type === 'create') {
+          // Deshacer una creación = eliminar la reserva creada
+          const current = await col.findOne({ _id });
+          await col.deleteOne({ _id });
+          undoTargets.push({
+            id: t.id,
+            label: t.label,
+            before: current ?? {},
+            changes: [],
+            after: null,
+          });
+        } else if (claimed.type === 'delete') {
           // Vuelve el documento completo, con el mismo _id
           await col.insertOne({ ...t.before, _id });
           undoTargets.push({
@@ -697,6 +847,32 @@ export class NovaAiProposals {
     ];
   }
 
+  // Datos de la reserva a crear (o creada) para la tarjeta
+  private createDetails(d: Record<string, any>, names: Map<string, string>) {
+    return [
+      { field: 'group.host.fullName', value: d.group?.host?.fullName },
+      {
+        field: 'group.host.location.countryName',
+        value: d.group?.host?.location?.countryName,
+      },
+      {
+        field: 'group.members',
+        value: (d.group?.members ?? []).map((m: any) => m.fullName).join(', '),
+      },
+      ...(d.apartmentId
+        ? [{ field: 'apartmentId', value: names.get(String(d.apartmentId)) }]
+        : []),
+      { field: 'stay.checkIn', value: d.stay?.checkIn },
+      { field: 'stay.checkOut', value: d.stay?.checkOut },
+      { field: 'billing.platform', value: d.billing?.platform },
+      { field: 'billing.basePrice', value: d.billing?.basePrice },
+      { field: 'billing.totalAmount', value: d.billing?.totalAmount },
+      { field: 'billing.amountReceived', value: d.billing?.amountReceived },
+      { field: 'billing.status', value: d.billing?.status },
+      { field: 'observations', value: d.observations },
+    ];
+  }
+
   private toCard(
     action: AssistantActionDocument,
     names: Map<string, string>,
@@ -707,6 +883,7 @@ export class NovaAiProposals {
       collection: action.targetCollection,
       status: action.status,
       summary: action.summary,
+      warnings: action.warnings ?? [],
       expiresAt: action.expiresAt,
       targets: action.targets.map((t) => ({
         id: t.id,
@@ -715,7 +892,9 @@ export class NovaAiProposals {
         details:
           action.type === 'delete'
             ? this.details(action.targetCollection, t.before, names)
-            : [],
+            : action.type === 'create'
+              ? this.createDetails(t.after ?? t.draft ?? {}, names)
+              : [],
       })),
     };
   }
