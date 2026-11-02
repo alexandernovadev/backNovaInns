@@ -22,8 +22,9 @@ export interface ActionTarget {
 // Historial de cambios propuestos por NovaAI (y, desde el paso 4, ejecutados)
 @Schema({ timestamps: true, collection: 'assistant_actions' })
 export class AssistantAction {
-  @Prop({ required: true, enum: ['update', 'delete'] })
-  type!: 'update' | 'delete';
+  // undo: registro de un deshacer (apunta al cambio original con undoOf)
+  @Prop({ required: true, enum: ['update', 'delete', 'undo'] })
+  type!: 'update' | 'delete' | 'undo';
 
   @Prop({ required: true, enum: ['bookings', 'apartments', 'expenses'] })
   targetCollection!: 'bookings' | 'apartments' | 'expenses';
@@ -60,6 +61,20 @@ export class AssistantAction {
   // Por qué falló (documento cambiado, vencida, error de Mongo...)
   @Prop({ type: String, default: null })
   error!: string | null;
+
+  // Deshacer: en el cambio original, cuándo/quién y con qué registro;
+  // en el registro del deshacer, a qué cambio deshizo
+  @Prop({ type: Date, default: null })
+  undoneAt!: Date | null;
+
+  @Prop({ type: String, default: null })
+  undoneBy!: string | null;
+
+  @Prop({ type: String, default: null })
+  undoActionId!: string | null;
+
+  @Prop({ type: String, default: null })
+  undoOf!: string | null;
 }
 
 export const AssistantActionSchema =

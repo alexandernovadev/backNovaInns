@@ -94,7 +94,7 @@ export const NOVA_AI_PROPOSAL_TOOLS = [
 // Lo que ve el front en la tarjeta
 export interface ActionCard {
   id: string;
-  type: 'update' | 'delete';
+  type: 'update' | 'delete' | 'undo';
   collection: CollectionName;
   status: string;
   summary: string;
@@ -106,6 +106,23 @@ export interface ActionCard {
     details: { field: string; value: unknown }[];
   }[];
 }
+
+// Lo que ve Admin → Historial NovaAI
+export interface HistoryItem extends ActionCard {
+  request: string;
+  error: string | null;
+  createdAt: Date;
+  confirmedAt: Date | null;
+  undoneAt: Date | null;
+  undoOf: string | null;
+  undoActionId: string | null;
+}
+
+const HISTORY_FILTERS: Record<string, Record<string, unknown>> = {
+  applied: { status: 'confirmed' },
+  undone: { status: 'undone' },
+  other: { status: { $in: ['pending', 'cancelled', 'expired', 'failed'] } },
+};
 
 class ProposalError extends Error {}
 
@@ -291,7 +308,206 @@ export class NovaAiProposals {
     return { id: String(action._id), status: action.status };
   }
 
+  async list(query: { page?: unknown; limit?: unknown; filter?: unknown }) {
+    const page = Math.max(Number(query.page) || 1, 1);
+    const limit = Math.min(Math.max(Number(query.limit) || 20, 1), 50);
+    const filter = HISTORY_FILTERS[String(query.filter)] ?? {};
+    const [total, actions, names] = await Promise.all([
+      this.actionModel.countDocuments(filter),
+      this.actionModel
+        .find(filter)
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit),
+      this.apartmentNames(),
+    ]);
+    const now = new Date();
+    const data: HistoryItem[] = actions.map((a) => {
+      const raw = a.toObject() as unknown as { createdAt: Date };
+      return {
+        ...this.toCard(a, names),
+        // Una pendiente vencida se muestra como vencida aunque nadie la haya tocado
+        status:
+          a.status === 'pending' && a.expiresAt < now ? 'expired' : a.status,
+        request: a.request,
+        error: a.error,
+        createdAt: raw.createdAt,
+        confirmedAt: a.confirmedAt,
+        undoneAt: a.undoneAt,
+        undoOf: a.undoOf,
+        undoActionId: a.undoActionId,
+      };
+    });
+    return {
+      data,
+      meta: { total, page, limit, totalPages: Math.ceil(total / limit) || 1 },
+    };
+  }
+
+  // Deshace un cambio confirmado. Si el documento cambió después del cambio
+  // de la IA, avisa (409 status "changed") salvo que se pida force: en ese caso
+  // solo se restauran los campos que tocó la IA y se respetan los demás.
+  async undo(id: string, userId: string | null, force = false) {
+    if (!ObjectId.isValid(id))
+      throw new NotFoundException('Cambio no encontrado');
+    const action = await this.actionModel.findById(id);
+    if (!action) throw new NotFoundException('Cambio no encontrado');
+    const conflict = (status: string, message: string, extra = {}) =>
+      new ConflictException({ statusCode: 409, status, message, ...extra });
+    if (action.type === 'undo')
+      throw conflict(action.status, 'Un deshacer no se puede deshacer');
+    if (action.status !== 'confirmed')
+      throw conflict(
+        action.status,
+        'Solo se pueden deshacer cambios que se aplicaron',
+      );
+
+    const col = this.connection.db!.collection(action.targetCollection);
+    const drift: { label: string; fields: string[] }[] = [];
+    for (const t of action.targets) {
+      const current = await col.findOne({ _id: new ObjectId(t.id) });
+      if (action.type === 'delete') {
+        if (current)
+          throw conflict(
+            'confirmed',
+            `"${t.label}" ya existe otra vez; no se puede restaurar encima.`,
+          );
+      } else {
+        if (!current)
+          throw conflict(
+            'confirmed',
+            `"${t.label}" ya no existe (se borró después). No se puede deshacer la edición.`,
+          );
+        const fields = this.changedPaths(t.after ?? {}, current);
+        if (fields.length) drift.push({ label: t.label, fields });
+      }
+    }
+    if (drift.length && !force)
+      throw conflict(
+        'changed',
+        'Este documento cambió después del cambio de NovaAI. Si deshaces igual, solo se restauran los campos que cambió NovaAI.',
+        { drift },
+      );
+
+    const now = new Date();
+    const claimed = await this.actionModel.findOneAndUpdate(
+      { _id: action._id, status: 'confirmed' },
+      { $set: { status: 'undone', undoneAt: now, undoneBy: userId } },
+      { returnDocument: 'after' },
+    );
+    if (!claimed)
+      throw conflict(action.status, 'Este cambio ya no está aplicado');
+
+    const undoTargets: ActionTarget[] = [];
+    try {
+      for (const t of claimed.targets) {
+        const _id = new ObjectId(t.id);
+        if (claimed.type === 'delete') {
+          // Vuelve el documento completo, con el mismo _id
+          await col.insertOne({ ...t.before, _id });
+          undoTargets.push({
+            id: t.id,
+            label: t.label,
+            before: {},
+            changes: [],
+            after: await col.findOne({ _id }),
+          });
+        } else {
+          const current = (await col.findOne({ _id }))!;
+          await col.updateOne(
+            { _id },
+            {
+              $set: {
+                ...Object.fromEntries(
+                  t.changes.map((c) => [c.field, c.before]),
+                ),
+                updatedAt: now,
+              },
+            },
+          );
+          undoTargets.push({
+            id: t.id,
+            label: t.label,
+            before: current,
+            changes: t.changes.map((c) => ({
+              field: c.field,
+              before: this.read(current, c.field),
+              after: c.before,
+            })),
+            after: await col.findOne({ _id }),
+          });
+        }
+      }
+    } catch (err) {
+      // Si no se alcanzó a restaurar nada, el cambio sigue aplicado
+      if (!undoTargets.length) {
+        claimed.status = 'confirmed';
+        claimed.undoneAt = null;
+        claimed.undoneBy = null;
+        await claimed.save();
+      } else {
+        claimed.error = `Deshacer parcial: ${(err as Error).message}`;
+        await claimed.save();
+      }
+      throw conflict(
+        claimed.status,
+        `No se pudo deshacer: ${(err as Error).message}`,
+      );
+    }
+
+    const undoAction = await this.actionModel.create({
+      type: 'undo',
+      targetCollection: claimed.targetCollection,
+      status: 'confirmed',
+      summary: `Deshacer: ${claimed.summary}`,
+      request: '',
+      targets: undoTargets,
+      userId,
+      expiresAt: now,
+      confirmedAt: now,
+      confirmedBy: userId,
+      undoOf: String(claimed._id),
+    });
+    claimed.undoActionId = String(undoAction._id);
+    await claimed.save();
+    return {
+      id: String(claimed._id),
+      status: claimed.status,
+      undoActionId: claimed.undoActionId,
+    };
+  }
+
   // ── helpers ──
+
+  // Rutas que difieren entre dos documentos (sin updatedAt ni __v)
+  private changedPaths(a: unknown, b: unknown): string[] {
+    const flat = (
+      v: unknown,
+      prefix = '',
+      out: Record<string, string> = {},
+    ) => {
+      const plain = EJSON.serialize(v, { relaxed: true }) as unknown;
+      const walk = (x: unknown, p: string) => {
+        if (
+          x &&
+          typeof x === 'object' &&
+          !Array.isArray(x) &&
+          !('$date' in x) &&
+          !('$oid' in x)
+        ) {
+          for (const [k, val] of Object.entries(x))
+            walk(val, p ? `${p}.${k}` : k);
+        } else out[p] = JSON.stringify(x);
+      };
+      walk(plain, prefix);
+      return out;
+    };
+    const fa = flat(a);
+    const fb = flat(b);
+    return [...new Set([...Object.keys(fa), ...Object.keys(fb)])]
+      .filter((k) => !/^(updatedAt|__v)$/.test(k) && fa[k] !== fb[k])
+      .slice(0, 10);
+  }
 
   // Compara dos documentos sin importar el orden de las llaves
   private sameDoc(a: unknown, b: unknown) {

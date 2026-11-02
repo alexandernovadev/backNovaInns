@@ -91,7 +91,13 @@ export class NovaAiService {
     })) as unknown[];
     const queries: string[] = [];
     const actions: ActionCard[] = [];
-    const request = messages.at(-1)!.text;
+    // Para el historial: los últimos mensajes del dueño, porque el último
+    // suele ser solo una respuesta corta ("Nequi") sin contexto
+    const request = messages
+      .filter((m) => m.role === 'user')
+      .slice(-3)
+      .map((m) => m.text.trim())
+      .join(' → ');
 
     for (let round = 0; round < MAX_ROUNDS; round++) {
       const interaction = await this.create({

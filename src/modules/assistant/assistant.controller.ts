@@ -2,8 +2,10 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Get,
   Param,
   Post,
+  Query,
   Req,
   UploadedFile,
   UseGuards,
@@ -68,6 +70,27 @@ export class AssistantController {
   confirmAction(@Param('id') id: string, @Req() req: Request) {
     const { userId } = (req.user ?? {}) as { userId?: string };
     return this.proposals.confirm(id, userId ?? null);
+  }
+
+  /** GET /api/assistant/actions?filter=applied|undone|other&page&limit — historial */
+  @Get('actions')
+  listActions(
+    @Query('filter') filter?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.proposals.list({ filter, page, limit });
+  }
+
+  /** POST /api/assistant/actions/:id/undo — body { force?: boolean } */
+  @Post('actions/:id/undo')
+  undoAction(
+    @Param('id') id: string,
+    @Body('force') force: unknown,
+    @Req() req: Request,
+  ) {
+    const { userId } = (req.user ?? {}) as { userId?: string };
+    return this.proposals.undo(id, userId ?? null, force === true);
   }
 
   /** POST /api/assistant/actions/:id/cancel — descarta una propuesta de NovaAI */
