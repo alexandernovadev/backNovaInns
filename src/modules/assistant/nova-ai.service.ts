@@ -9,6 +9,11 @@ import { ConfigService } from '@nestjs/config';
 import { GoogleGenAI } from '@google/genai';
 import { novaAiPrompt } from './nova-ai.prompt';
 import { NOVA_AI_TOOLS, NovaAiTools } from './nova-ai.tools';
+import {
+  ActionCard,
+  NOVA_AI_PROPOSAL_TOOLS,
+  NovaAiProposals,
+} from './nova-ai.proposals';
 
 export interface ChatMessage {
   role: 'user' | 'model';
@@ -18,7 +23,7 @@ export interface ChatMessage {
 const MAX_MESSAGES = 40;
 const MAX_TEXT = 4000;
 // Rondas de consultas por pregunta, para que no se quede en un bucle
-const MAX_ROUNDS = 10;
+const MAX_ROUNDS = 8;
 
 type Interaction = Awaited<ReturnType<GoogleGenAI['interactions']['create']>>;
 type InputStep = Exclude<
@@ -34,6 +39,7 @@ export class NovaAiService {
   constructor(
     private readonly config: ConfigService,
     private readonly tools: NovaAiTools,
+    private readonly proposals: NovaAiProposals,
   ) {}
 
   private gemini(): GoogleGenAI {
@@ -66,7 +72,7 @@ export class NovaAiService {
     return messages as ChatMessage[];
   }
 
-  async chat(rawMessages: unknown) {
+  async chat(rawMessages: unknown, userId: string | null = null) {
     const messages = this.validate(rawMessages);
     const model =
       this.config.get<string>('GEMINI_CHAT_MODEL') ?? 'gemini-3.5-flash-lite';
@@ -84,13 +90,15 @@ export class NovaAiService {
       content: [{ type: 'text', text: m.text }],
     })) as unknown[];
     const queries: string[] = [];
+    const actions: ActionCard[] = [];
+    const request = messages.at(-1)!.text;
 
     for (let round = 0; round < MAX_ROUNDS; round++) {
       const interaction = await this.create({
         model,
         system_instruction: novaAiPrompt(today),
         input: input as InputStep,
-        tools: NOVA_AI_TOOLS,
+        tools: [...NOVA_AI_TOOLS, ...NOVA_AI_PROPOSAL_TOOLS],
         generation_config: { thinking_level: 'minimal' },
         // Datos del negocio: que Google no guarde la conversación
         store: false,
@@ -103,12 +111,28 @@ export class NovaAiService {
           'output_text' in interaction ? interaction.output_text : '';
         if (!reply?.trim())
           throw new BadGatewayException('NovaAI respondió vacío');
-        return { reply: reply.trim(), model, queries };
+        return { reply: reply.trim(), model, queries, actions };
       }
 
       const results = await Promise.all(
         calls.map(async (call) => {
-          const run = await this.tools.run(call.name, call.arguments ?? {});
+          const args = call.arguments ?? {};
+          this.logger.debug(
+            `${call.name} ${JSON.stringify(args).slice(0, 400)}`,
+          );
+          let run;
+          if (call.name.startsWith('propose_')) {
+            const res = await this.proposals.propose(
+              call.name,
+              args,
+              request,
+              userId,
+            );
+            run = res.run;
+            if (res.card) actions.push(res.card);
+          } else {
+            run = await this.tools.run(call.name, args);
+          }
           queries.push(run.summary);
           return {
             type: 'function_result',
@@ -119,15 +143,51 @@ export class NovaAiService {
           };
         }),
       );
+      // Si ya armó una propuesta, se termina aquí: el modelo tendía a seguir
+      // consultando hasta agotar las rondas aunque la tarjeta ya estuviera lista
+      if (actions.length) {
+        const lines = actions.map((a) => `- ${a.summary}`).join('\n');
+        return {
+          reply: `Preparé ${actions.length === 1 ? 'esta propuesta' : 'estas propuestas'}:\n${lines}\n\nRevisa la tarjeta para confirmar o cancelar.`,
+          model,
+          queries,
+          actions,
+        };
+      }
+
       // Se devuelven los pasos del modelo tal cual (incluye su razonamiento) + los resultados
       input = [...input, ...steps, ...results];
     }
 
+    // Se agotaron las rondas: una última llamada sin herramientas para que
+    // responda con lo que encontró en vez de seguir buscando
+    const final = await this.create({
+      model,
+      system_instruction: novaAiPrompt(today),
+      input: [
+        ...input,
+        {
+          type: 'user_input',
+          content: [
+            {
+              type: 'text',
+              text: 'Ya no hagas más consultas. Responde con lo que encontraste; si no es exactamente lo que pedí, muéstrame lo más parecido y pregúntame.',
+            },
+          ],
+        },
+      ] as InputStep,
+      tools: [...NOVA_AI_TOOLS, ...NOVA_AI_PROPOSAL_TOOLS],
+      generation_config: { thinking_level: 'minimal', tool_choice: 'none' },
+      store: false,
+    });
+    const reply = 'output_text' in final ? final.output_text?.trim() : '';
     return {
       reply:
+        reply ||
         'Me enredé con esa pregunta y no llegué a una respuesta. ¿La puedes hacer más concreta?',
       model,
       queries,
+      actions,
     };
   }
 
