@@ -1,3 +1,7 @@
 allowBuilds:
   '@parcel/watcher': false
   unrs-resolver: false
+  # SDK de Gemini (v3.6.0): sus scripts de instalación no hacen falta. Sin estar
+  # en esta lista, pnpm 12 hace fallar el install del Dockerfile (ERR_PNPM_IGNORED_BUILDS)
+  '@google/genai': false
+  protobufjs: false
