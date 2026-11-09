@@ -13,6 +13,7 @@ import { DataModule } from './modules/data/data.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { ExpensesModule } from './modules/expenses/expenses.module';
 import { AssistantModule } from './modules/assistant/assistant.module';
+import { TrackerModule } from './modules/tracker';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { AssistantModule } from './modules/assistant/assistant.module';
     AnalyticsModule,
     ExpensesModule,
     AssistantModule,
+    TrackerModule,
   ],
   controllers: [AppController],
   providers: [AppService],

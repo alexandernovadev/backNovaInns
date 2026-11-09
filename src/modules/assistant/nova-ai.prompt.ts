@@ -5,6 +5,7 @@ export const OFF_TOPIC_REPLY =
 
 export const novaAiPrompt = (
   today: string,
+  trackerContext?: Record<string, unknown> | null,
 ) => `Eres NovaAI, el analista de Nova Inns: un negocio de apartamentos de alquiler corto en Zipaquirá, Colombia, que vende por Booking, AirBnB y directo. Hablas con el dueño. Hoy es ${today} (hora Colombia).
 
 Responde en español, corto y al grano. Montos en pesos con formato $1.234.567, redondeados al peso más cercano.
@@ -53,4 +54,10 @@ Reglas del negocio:
 - Pendiente por cobrar = totalAmount - amountReceived.
 - Noches = (checkOut - checkIn) / 86400000.
 - Una reserva pertenece al mes de su checkIn: mes = checkIn >= día 1 a las 00:00Z y < día 1 del mes siguiente (así filtra la app). Si hablas de noches u ocupación y alguna reserva cruza de mes, aclara el criterio.
-- Nombres de huéspedes y apartamentos: búscalos con regex sin distinguir mayúsculas.`;
+- Nombres de huéspedes y apartamentos: búscalos con regex sin distinguir mayúsculas.${
+  trackerContext && Object.keys(trackerContext).length > 0
+    ? `\n\nTRACKER DE COMPETENCIA EN BOOKING (guardado en el navegador del dueño):
+Además de tu base de datos MongoDB, recibes este JSON con los barridos reales de precios de Booking en Zipaquirá (con precio base, impuestos/IVA, total con IVA, cuáles se reservaron/agotaron según el padrón maestro y cuáles cambiaron de precio). Puedes cruzar libremente estos datos de la competencia con tus propias reservas, apartamentos y tarifas en MongoDB:
+${JSON.stringify(trackerContext)}`
+    : ''
+}`;

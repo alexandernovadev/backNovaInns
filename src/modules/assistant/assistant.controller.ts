@@ -109,9 +109,17 @@ export class AssistantController {
    * body: { messages: [{ role: 'user' | 'model', text }] } — historial completo, último = user
    */
   @Post('chat')
-  chat(@Body('messages') messages: unknown, @Req() req: Request) {
+  chat(
+    @Body('messages') messages: unknown,
+    @Body('trackerContext') trackerContext: Record<string, unknown> | undefined,
+    @Req() req: Request,
+  ) {
     const { userId } = (req.user ?? {}) as { userId?: string };
-    return this.novaAiService.chat(messages, userId ?? null);
+    return this.novaAiService.chat(
+      messages,
+      userId ?? null,
+      trackerContext ?? null,
+    );
   }
 
   /** POST /api/assistant/actions/:id/confirm — ejecuta una propuesta de NovaAI */

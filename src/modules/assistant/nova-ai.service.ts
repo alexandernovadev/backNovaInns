@@ -72,7 +72,11 @@ export class NovaAiService {
     return messages as ChatMessage[];
   }
 
-  async chat(rawMessages: unknown, userId: string | null = null) {
+  async chat(
+    rawMessages: unknown,
+    userId: string | null = null,
+    trackerContext?: Record<string, unknown> | null,
+  ) {
     const messages = this.validate(rawMessages);
     const model =
       this.config.get<string>('GEMINI_CHAT_MODEL') ?? 'gemini-3.5-flash-lite';
@@ -83,6 +87,7 @@ export class NovaAiService {
       month: 'long',
       day: 'numeric',
     });
+    const systemPrompt = novaAiPrompt(today, trackerContext);
 
     // El historial + lo que el modelo va pidiendo y lo que le devolvemos
     let input = messages.map((m) => ({
@@ -102,7 +107,7 @@ export class NovaAiService {
     for (let round = 0; round < MAX_ROUNDS; round++) {
       const interaction = await this.create({
         model,
-        system_instruction: novaAiPrompt(today),
+        system_instruction: systemPrompt,
         input: input as InputStep,
         tools: [...NOVA_AI_TOOLS, ...NOVA_AI_PROPOSAL_TOOLS],
         generation_config: { thinking_level: 'minimal' },
@@ -169,7 +174,7 @@ export class NovaAiService {
     // responda con lo que encontró en vez de seguir buscando
     const final = await this.create({
       model,
-      system_instruction: novaAiPrompt(today),
+      system_instruction: systemPrompt,
       input: [
         ...input,
         {
