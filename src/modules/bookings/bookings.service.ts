@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { QueryFilter, Model } from 'mongoose';
 import { Booking, BookingDocument } from './schemas/booking.schema';
 import { paginate } from '../../shared/pagination.util';
 
@@ -27,13 +27,51 @@ export class BookingsService {
   async findAll(
     query: BookingFilters & { page?: number; limit?: number } = {},
   ) {
-    return paginate(this.bookingModel, {
-      filter: this.buildFilter(query),
-      page: query.page,
-      limit: query.limit ?? 20,
-      sort: { 'stay.checkIn': 1 },
-      populate: { path: 'apartmentId', select: 'internalName status' },
-    });
+    const filter = this.buildFilter(query);
+    const page = Math.max(1, query.page ?? 1);
+    const limit = query.limit ?? 20;
+
+    // La lista es por fecha de entrada, pero los CHECK-OUT terminados caen al
+    // final. Se pagina dentro de la agregación para que el orden sea estable
+    // entre páginas, y después se poblan solo los ids de la página.
+    const [facet] = await this.bookingModel.aggregate<{
+      data: { _id: unknown }[];
+      meta: { total: number }[];
+    }>([
+      { $match: filter },
+      {
+        $addFields: {
+          __done: { $cond: [{ $eq: ['$stay.status', 'CHECK-OUT'] }, 1, 0] },
+        },
+      },
+      { $sort: { __done: 1, 'stay.checkIn': 1, _id: 1 } },
+      {
+        $facet: {
+          data: [
+            { $skip: (page - 1) * limit },
+            { $limit: limit },
+            { $project: { _id: 1 } },
+          ],
+          meta: [{ $count: 'total' }],
+        },
+      },
+    ]);
+
+    const ids = (facet?.data ?? []).map((d) => d._id);
+    const docs = (await this.bookingModel
+      .find({ _id: { $in: ids } } as QueryFilter<BookingDocument>)
+      .populate({ path: 'apartmentId', select: 'internalName status' })) as BookingDocument[];
+
+    const order = new Map(ids.map((id, i) => [String(id), i]));
+    const data = docs
+      .filter((d) => order.has(String(d._id)))
+      .sort((a, b) => (order.get(String(a._id)) ?? 0) - (order.get(String(b._id)) ?? 0));
+
+    const total = facet?.meta?.[0]?.total ?? 0;
+    return {
+      data,
+      meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
+    };
   }
 
   // Filtros compartidos por la lista y el resumen financiero
