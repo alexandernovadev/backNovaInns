@@ -5,5 +5,8 @@ export function toTitleCase(value: unknown): string {
     .trim()
     .replace(/\s+/g, ' ')
     .toLocaleLowerCase('es')
-    .replace(/(^|[\s-])(\p{L})/gu, (_, sep: string, letter: string) => sep + letter.toLocaleUpperCase('es'));
+    .replace(
+      /(^|[\s-])(\p{L})/gu,
+      (_, sep: string, letter: string) => sep + letter.toLocaleUpperCase('es'),
+    );
 }
