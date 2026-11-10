@@ -4,8 +4,6 @@ import { Model } from 'mongoose';
 import { Booking, BookingDocument } from '../bookings';
 import { Apartment, ApartmentDocument } from '../apartments';
 import { Expense, ExpenseDocument } from '../expenses';
-import { roundBillingCheckCop } from '../../shared/money.util';
-import type { BillingAmounts } from '../../shared/money.util';
 
 export type ClearableModel = 'bookings' | 'apartments' | 'expenses';
 
@@ -95,47 +93,5 @@ export class DataService {
 
     const result = await target.deleteMany({});
     return { deleted: result.deletedCount };
-  }
-
-  // ── ARREGLAR PRECIOS (herramienta temporal) ────────────────
-  // En Colombia no se usan centavos: trunca hacia abajo los montos que ya
-  // están guardados (556.874 → 556.800) y recalcula el total como base + extras
-  async fixBookingPrices(): Promise<{
-    checked: number;
-    fixed: number;
-    changes: string[];
-  }> {
-    const bookings = await this.bookingModel
-      .find()
-      .select('group.host.fullName billing')
-      .lean();
-
-    let fixed = 0;
-    const changes: string[] = [];
-
-    for (const b of bookings) {
-      const billing = (b.billing ?? {}) as BillingAmounts;
-      const host = (
-        b.group as { host?: { fullName?: string } } | undefined
-      )?.host;
-      const rounded = roundBillingCheckCop(billing);
-      if (!rounded.changed) continue;
-
-      await this.bookingModel.updateOne(
-        { _id: b._id },
-        { $set: { billing: rounded.billing } },
-      );
-      fixed++;
-
-      if (changes.length < 10)
-        changes.push(
-          `${host?.fullName ?? String(b._id)}: ` +
-            `base ${billing.basePrice ?? 0} → ${rounded.billing.basePrice ?? 0} · ` +
-            `total ${billing.totalAmount ?? 0} → ${rounded.billing.totalAmount ?? 0} · ` +
-            `recibido ${billing.amountReceived ?? 0} → ${rounded.billing.amountReceived ?? 0}`,
-        );
-    }
-
-    return { checked: bookings.length, fixed, changes };
   }
 }

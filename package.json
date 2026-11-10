@@ -22,8 +22,7 @@
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
-    "migrate:extra-services": "ts-node scripts/migrate-extra-services.ts",
-    "migrate:round-cop": "ts-node scripts/migrate-round-cop.ts"
+    "migrate:extra-services": "ts-node scripts/migrate-extra-services.ts"
   },
   "dependencies": {
     "@google/genai": "^2.32.0",

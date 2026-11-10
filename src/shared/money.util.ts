@@ -73,29 +73,6 @@ export function roundBillingCop(billing: BillingAmounts): BillingAmounts {
   return b;
 }
 
-const moneySnapshot = (b: BillingAmounts) =>
-  JSON.stringify([
-    b.basePrice,
-    b.totalAmount,
-    b.amountReceived,
-    (b.extraServices ?? []).map((s) => s.price),
-  ]);
-
-// Igual que roundBillingCop pero dice si algo cambió: lo usa la herramienta
-// "Arreglar precios" de Admin para saber qué reservas corregir
-export function roundBillingCheckCop(billing: BillingAmounts): {
-  billing: BillingAmounts;
-  changed: boolean;
-} {
-  const copy: BillingAmounts = {
-    ...billing,
-    extraServices: (billing.extraServices ?? []).map((s) => ({ ...s })),
-  };
-  const before = moneySnapshot(copy);
-  applyBillingCop(copy);
-  return { billing: copy, changed: before !== moneySnapshot(copy) };
-}
-
 type UpdateLike = { $set?: Record<string, unknown> } & Record<string, unknown>;
 
 // Redondea el dinero dentro de un update de mongoose: acepta el objeto billing
