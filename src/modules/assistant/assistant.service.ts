@@ -11,6 +11,7 @@ import {
   BOOKING_EXTRACTION_SCHEMA,
 } from './booking-extraction.prompt';
 import { roundBillingCop } from '../../shared/money.util';
+import { timeoutSeconds, withTimeout } from '../../shared/timeout.util';
 import type { BillingAmounts } from '../../shared/money.util';
 
 @Injectable()
@@ -36,29 +37,37 @@ export class AssistantService {
       ? `Lee esta reserva. Nota del usuario: ${hint.trim()}`
       : 'Lee esta reserva.';
 
+    const deadline = timeoutSeconds(
+      this.config.get<string>('GEMINI_TIMEOUT_MS'),
+      150,
+    );
     let interaction: Awaited<ReturnType<GoogleGenAI['interactions']['create']>>;
     try {
-      interaction = await this.gemini().interactions.create({
-        model,
-        system_instruction: BOOKING_EXTRACTION_PROMPT,
-        input: [
-          { type: 'text', text },
-          {
-            type: 'image',
-            data: file.buffer.toString('base64'),
-            mime_type: file.mimetype as 'image/png',
+      interaction = await withTimeout(
+        this.gemini().interactions.create({
+          model,
+          system_instruction: BOOKING_EXTRACTION_PROMPT,
+          input: [
+            { type: 'text', text },
+            {
+              type: 'image',
+              data: file.buffer.toString('base64'),
+              mime_type: file.mimetype as 'image/png',
+            },
+          ],
+          response_format: {
+            type: 'text',
+            mime_type: 'application/json',
+            schema: BOOKING_EXTRACTION_SCHEMA,
           },
-        ],
-        response_format: {
-          type: 'text',
-          mime_type: 'application/json',
-          schema: BOOKING_EXTRACTION_SCHEMA,
-        },
-        // Extracción simple: que lea rápido y casi no razone
-        generation_config: { thinking_level: 'minimal' },
-        // Datos de huéspedes: que Google no guarde la conversación
-        store: false,
-      });
+          // Extracción simple: que lea rápido y casi no razone
+          generation_config: { thinking_level: 'minimal' },
+          // Datos de huéspedes: que Google no guarde la conversación
+          store: false,
+        }),
+        deadline,
+        'La lectura de la imagen',
+      );
     } catch (err) {
       if (err instanceof ServiceUnavailableException) throw err;
       this.logger.error(`Gemini falló: ${(err as Error).message}`);

@@ -9,6 +9,7 @@ import { ConfigService } from '@nestjs/config';
 import { GoogleGenAI } from '@google/genai';
 import { novaAiPrompt } from './nova-ai.prompt';
 import { NOVA_AI_TOOLS, NovaAiTools } from './nova-ai.tools';
+import { timeoutSeconds, withTimeout } from '../../shared/timeout.util';
 import {
   ActionCard,
   NOVA_AI_PROPOSAL_TOOLS,
@@ -205,8 +206,17 @@ export class NovaAiService {
   private async create(
     params: Parameters<GoogleGenAI['interactions']['create']>[0],
   ): Promise<Interaction> {
+    // Sin deadline el SDK puede colgar el request entero (hasta 9 rondas por chat)
+    const deadline = timeoutSeconds(
+      this.config.get<string>('GEMINI_TIMEOUT_MS'),
+      45,
+    );
     try {
-      return await this.gemini().interactions.create(params);
+      return await withTimeout(
+        this.gemini().interactions.create(params),
+        deadline,
+        'NovaAI',
+      );
     } catch (err) {
       if (err instanceof ServiceUnavailableException) throw err;
       this.logger.error(`Gemini falló: ${(err as Error).message}`);
