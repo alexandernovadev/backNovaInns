@@ -104,3 +104,10 @@ export class Apartment {
 }
 
 export const ApartmentSchema = SchemaFactory.createForClass(Apartment);
+
+// La lista busca por internalName con regex y ordena por ese mismo campo
+ApartmentSchema.index(
+  { internalName: 1 },
+  { collation: { locale: 'en', strength: 2 } },
+);
+ApartmentSchema.index({ status: 1 });

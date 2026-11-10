@@ -85,3 +85,9 @@ export class AssistantAction {
 
 export const AssistantActionSchema =
   SchemaFactory.createForClass(AssistantAction);
+
+// El historial filtra por estado y ordena por fecha; confirm() busca por
+// {_id, status, expiresAt}. Sin TTL a propósito: las acciones aplicadas son el
+// registro para "deshacer", no basura que deba borrarse sola.
+AssistantActionSchema.index({ status: 1, createdAt: -1 });
+AssistantActionSchema.index({ userId: 1, createdAt: -1 });

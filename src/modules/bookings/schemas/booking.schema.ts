@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { HydratedDocument, Types } from 'mongoose';
+import { HydratedDocument } from 'mongoose';
 import { toTitleCase } from '../../../shared/text.util';
 import {
   applyBillingCop,
@@ -48,8 +48,10 @@ const extraServiceDef = {
 
 @Schema({ timestamps: true })
 export class Booking {
-  @Prop({ type: Types.ObjectId, ref: 'Apartment', required: true })
-  apartmentId!: Types.ObjectId;
+  // Se guarda como string (el id viaja así desde el front y desde NovaAI); con
+  // String explícito el índice de apartmentId sí sirve: Mixed no se indexa bien
+  @Prop({ type: String, ref: 'Apartment', required: true })
+  apartmentId!: string;
 
   @Prop({
     type: {
@@ -117,7 +119,16 @@ export class Booking {
 
 export const BookingSchema = SchemaFactory.createForClass(Booking);
 
+// Índices por los filtros reales de buildFilter/aggregate: casi nunca se filtra
+// por un solo campo, así que van compuestos con la fecha ordenada
 BookingSchema.index({ 'stay.checkIn': 1, 'stay.checkOut': 1 });
+BookingSchema.index({ apartmentId: 1, 'stay.checkIn': 1 });
+BookingSchema.index({ 'stay.status': 1, 'stay.checkIn': 1 });
+BookingSchema.index({ 'billing.status': 1, 'stay.checkIn': 1 });
+BookingSchema.index({ 'billing.platform': 1, 'stay.checkIn': 1 });
+BookingSchema.index({ 'group.host.fullName': 1 });
+BookingSchema.index({ 'group.host.location.countryCode': 1 });
+BookingSchema.index({ createdAt: -1 });
 
 BookingSchema.virtual('billing.pendingAmount').get(function () {
   return this.billing.totalAmount - this.billing.amountReceived;

@@ -23,6 +23,9 @@ import { TrackerModule } from './modules/tracker';
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
         uri: config.get<string>('MONGODB_URI'),
+        // En producción los índices se construyen en el deploy con
+        // `pnpm db:indices`; así no se escriben bajo carga ni molestan en logs
+        autoIndex: process.env.NODE_ENV !== 'production',
       }),
     }),
     AuthModule,
