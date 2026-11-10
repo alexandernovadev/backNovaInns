@@ -1,10 +1,14 @@
 import { NestFactory } from '@nestjs/core';
+import compression from 'compression';
 import { ValidationPipe } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
+
+  // Listados y dashboards son JSON repetitivo: sin comprimir pesan el triple
+  app.use(compression());
 
   // Import de reservas/apartamentos manda JSON grandes (default de Express: 100kb)
   app.useBodyParser('json', { limit: '20mb' });
