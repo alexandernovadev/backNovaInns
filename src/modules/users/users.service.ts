@@ -53,6 +53,7 @@ export class UsersService {
     return paginate(this.userModel, {
       filter,
       select: '-auth.passwordHash',
+      lean: true,
       sort: { 'profile.fullName': 1 },
       page: query.page,
       limit: query.limit ?? 10,

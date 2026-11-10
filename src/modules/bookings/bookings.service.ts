@@ -2,7 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { QueryFilter, Model } from 'mongoose';
 import { Booking, BookingDocument } from './schemas/booking.schema';
-import { paginate } from '../../shared/pagination.util';
+import { paginate, MAX_LIMIT } from '../../shared/pagination.util';
 import { roundBillingCop, roundCopDown } from '../../shared/money.util';
 import type { BillingAmounts } from '../../shared/money.util';
 
@@ -39,7 +39,8 @@ export class BookingsService {
   ) {
     const filter = this.buildFilter(query);
     const page = Math.max(1, query.page ?? 1);
-    const limit = query.limit ?? 20;
+    // Tope: ?limit=100000 no es una consulta legítima (ver MAX_LIMIT)
+    const limit = Math.min(Math.max(query.limit ?? 20, 1), MAX_LIMIT);
 
     // La lista es por fecha de entrada, pero los CHECK-OUT terminados caen al
     // final. Se pagina dentro de la agregación para que el orden sea estable
@@ -68,14 +69,23 @@ export class BookingsService {
     ]);
 
     const ids = (facet?.data ?? []).map((d) => d._id);
+    // Sin las identificaciones: la lista no las muestra y son URLs de documentos
+    // de identidad viajando en cada página
     const docs = (await this.bookingModel
-      .find({ _id: { $in: ids } } as QueryFilter<BookingDocument>)
-      .populate({ path: 'apartmentId', select: 'internalName status' })) as BookingDocument[];
+      .find({ _id: { $in: ids } } as QueryFilter<BookingDocument>, {
+        'group.host.identifications': 0,
+        'group.members.identifications': 0,
+      })
+      .populate({ path: 'apartmentId', select: 'internalName status' })
+      .lean()) as unknown as BookingDocument[];
 
     const order = new Map(ids.map((id, i) => [String(id), i]));
     const data = docs
       .filter((d) => order.has(String(d._id)))
-      .sort((a, b) => (order.get(String(a._id)) ?? 0) - (order.get(String(b._id)) ?? 0));
+      .sort(
+        (a, b) =>
+          (order.get(String(a._id)) ?? 0) - (order.get(String(b._id)) ?? 0),
+      );
 
     const total = facet?.meta?.[0]?.total ?? 0;
     return {
@@ -143,7 +153,11 @@ export class BookingsService {
       select:
         'stay.checkIn stay.checkOut stay.status billing.totalAmount group.host.fullName',
       page: 1,
-      limit: 9999,
+      // El calendario dibuja el rango completo: necesita más que una tabla, pero
+      // no un sinfín (antes era 9999 sin tope)
+      limit: 1500,
+      maxLimit: 1500,
+      lean: true,
       sort: { 'stay.checkIn': -1 },
       populate: { path: 'apartmentId', select: 'internalName' },
     });

@@ -44,6 +44,7 @@ export class ExpensesService {
 
     return paginate(this.expenseModel, {
       filter,
+      lean: true,
       sort: { date: -1 },
       page: query.page,
       limit: query.limit ?? 20,

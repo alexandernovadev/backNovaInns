@@ -12,7 +12,20 @@ export class AnalyticsService {
     @InjectModel(Apartment.name) private aptModel: Model<ApartmentDocument>,
   ) {}
 
+  // El dashboard son 7 agregaciones y se vuelve a pedir en cada navegación a la
+  // vista; 30 s de caché quitan el costo sin mostrar datos rancios
+  private static readonly DASHBOARD_TTL_MS = 30_000;
+  private readonly dashboardCache = new Map<
+    string,
+    { at: number; data: unknown }
+  >();
+
   async dashboard(from?: string, to?: string, apartmentId?: string) {
+    const key = `${from ?? ''}|${to ?? ''}|${apartmentId ?? ''}`;
+    const hit = this.dashboardCache.get(key);
+    if (hit && Date.now() - hit.at < AnalyticsService.DASHBOARD_TTL_MS)
+      return hit.data;
+
     const match = this.baseMatch(from, to, apartmentId);
     const [
       summary,
@@ -32,7 +45,7 @@ export class AnalyticsService {
       this.revenueByApartment(match),
     ]);
 
-    return {
+    const data = {
       summary,
       monthly,
       platforms,
@@ -41,6 +54,11 @@ export class AnalyticsService {
       countries,
       apartments,
     };
+
+    // el mapa no puede crecer con cada combinación de filtro
+    if (this.dashboardCache.size > 40) this.dashboardCache.clear();
+    this.dashboardCache.set(key, { at: Date.now(), data });
+    return data;
   }
 
   // ── helpers ──
@@ -113,20 +131,34 @@ export class AnalyticsService {
 
   // ── 2. revenue by calendar month ──
   private async revenueByMonth(match: Record<string, any>) {
-    const pipe: any[] = [
+    // El agrupamiento va en Mongo: antes subía todas las reservas del rango a JS
+    const rows: {
+      _id: string;
+      pending: number;
+      received: number;
+      count: number;
+    }[] = await this.bookingModel.aggregate([
       { $match: match },
       {
-        $project: {
-          checkIn: '$stay.checkIn',
-          pending: {
-            $subtract: ['$billing.totalAmount', '$billing.amountReceived'],
+        $group: {
+          _id: {
+            $dateToString: {
+              format: '%Y-%m',
+              date: '$stay.checkIn',
+              timezone: 'UTC',
+            },
           },
-          received: '$billing.amountReceived',
+          pending: {
+            $sum: {
+              $subtract: ['$billing.totalAmount', '$billing.amountReceived'],
+            },
+          },
+          received: { $sum: '$billing.amountReceived' },
+          count: { $sum: 1 },
         },
       },
-      { $sort: { checkIn: 1 } },
-    ];
-    const bookings = await this.bookingModel.aggregate(pipe);
+      { $sort: { _id: 1 } },
+    ]);
 
     const monthNames = [
       'Ene',
@@ -143,43 +175,16 @@ export class AnalyticsService {
       'Dic',
     ];
 
-    const map = new Map<
-      string,
-      {
-        label: string;
-        sort: number;
-        pending: number;
-        received: number;
-        count: number;
-      }
-    >();
-    for (const b of bookings) {
-      const d = new Date(b.checkIn);
-      const m = d.getUTCMonth();
-      const y = d.getUTCFullYear();
-      const key = `${y}-${String(m).padStart(2, '0')}`;
-      if (!map.has(key))
-        map.set(key, {
-          label: `${monthNames[m]} ${String(y).slice(2)}`,
-          sort: y * 12 + m,
-          pending: 0,
-          received: 0,
-          count: 0,
-        });
-      const entry = map.get(key)!;
-      entry.pending += b.pending;
-      entry.received += b.received;
-      entry.count += 1;
-    }
-
-    return Array.from(map.values())
-      .sort((a, b) => a.sort - b.sort)
-      .map((r) => ({
-        month: r.label,
+    // Mes "2026-11" → etiqueta "Nov 26" (igual que antes, 0-indexada para Ene..Dic)
+    return rows.map((r) => {
+      const [y, m] = r._id.split('-').map(Number);
+      return {
+        month: `${monthNames[m - 1] ?? '?'} ${String(y).slice(2)}`,
         pending: r.pending,
         received: r.received,
         count: r.count,
-      }));
+      };
+    });
   }
 
   // ── 3. platform distribution ──

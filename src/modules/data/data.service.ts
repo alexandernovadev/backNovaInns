@@ -4,6 +4,7 @@ import { Model } from 'mongoose';
 import { Booking, BookingDocument } from '../bookings';
 import { Apartment, ApartmentDocument } from '../apartments';
 import { Expense, ExpenseDocument } from '../expenses';
+import { roundBillingCop } from '../../shared/money.util';
 
 export type ClearableModel = 'bookings' | 'apartments' | 'expenses';
 
@@ -32,22 +33,41 @@ export class DataService {
   private async importRecords<T>(
     model: Model<T, any, any, any, any, any, any>,
     records: any[],
+    // Las reservas traen dinero: se redondea aquí porque bulkWrite/insertMany
+    // no pasan por los hooks del schema
+    prepare?: (data: any) => any,
   ): Promise<{ inserted: number; updated: number }> {
+    const CHUNK = 500;
     let inserted = 0;
     let updated = 0;
 
-    for (const record of records) {
-      const { _id, __v, createdAt, updatedAt, ...data } = record;
-      if (_id) {
-        const res = await model.updateOne(
-          { _id },
-          { $set: data },
-          { upsert: true },
-        );
-        res.upsertedCount ? inserted++ : updated++;
-      } else {
-        await new model(data).save();
-        inserted++;
+    for (let i = 0; i < records.length; i += CHUNK) {
+      const updates: any[] = [];
+      const inserts: any[] = [];
+
+      for (const record of records.slice(i, i + CHUNK)) {
+        const { _id, __v, createdAt, updatedAt, ...rest } = record;
+        const data = prepare ? prepare(rest) : rest;
+        if (_id)
+          updates.push({
+            updateOne: {
+              filter: { _id },
+              update: { $set: data },
+              upsert: true,
+            },
+          });
+        else inserts.push({ _id, ...data });
+      }
+
+      if (updates.length) {
+        const res = await model.bulkWrite(updates);
+        inserted += res.upsertedCount ?? 0;
+        updated += res.modifiedCount ?? 0;
+      }
+      if (inserts.length) {
+        // insertMany sí aplica defaults y validadores del schema
+        await model.insertMany(inserts);
+        inserted += inserts.length;
       }
     }
 
@@ -61,7 +81,10 @@ export class DataService {
       ...r,
       apartmentId: r.apartmentId?._id ?? r.apartmentId,
     }));
-    return this.importRecords(this.bookingModel, clean);
+    // bulkWrite/insertMany no pasan por los hooks: el dinero se redondea aquí
+    return this.importRecords(this.bookingModel, clean, (data) =>
+      data.billing ? { ...data, billing: roundBillingCop(data.billing) } : data,
+    );
   }
 
   async importApartments(
