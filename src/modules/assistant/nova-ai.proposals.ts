@@ -15,6 +15,8 @@ import {
   AssistantActionDocument,
 } from './schemas/assistant-action.schema';
 import { COLLECTIONS, ToolRun } from './nova-ai.tools';
+import { roundBillingCop, roundMoneyValueCop } from '../../shared/money.util';
+import type { BillingAmounts } from '../../shared/money.util';
 
 const { BSON } = mongo;
 const { EJSON, ObjectId } = BSON;
@@ -230,7 +232,10 @@ export class NovaAiProposals {
     request: string,
     userId: string | null,
   ): Promise<ActionCard> {
-    const { _id: _ignored, apartmentId: _apt, ...data } = draft ?? {};
+    const { _id: _ignored, apartmentId: _apt, ...rest } = draft ?? {};
+    // Montos en múltiplos de 100 COP (sin centavos) antes de mostrar la tarjeta
+    const data = rest as { billing?: BillingAmounts };
+    if (data.billing) data.billing = roundBillingCop(data.billing);
     const _id = new ObjectId();
     // apartmentId se elige al confirmar: aquí uno provisional solo para validar
     const doc = new this.models.bookings({
@@ -724,6 +729,9 @@ export class NovaAiProposals {
         value = String(c.value);
       }
       if (field === 'apartmentId') value = await this.checkApartment(value);
+      // Dinero en múltiplos de 100 COP: estas ediciones se guardan con
+      // colección cruda, fuera de los hooks del schema
+      if (col === 'bookings') value = roundMoneyValueCop(field, value);
       doc.set(field, value);
       fields.push(field);
     }

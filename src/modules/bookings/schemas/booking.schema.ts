@@ -1,6 +1,10 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument, Types } from 'mongoose';
 import { toTitleCase } from '../../../shared/text.util';
+import {
+  applyBillingCop,
+  roundBillingUpdateCop,
+} from '../../../shared/money.util';
 
 export type BookingDocument = HydratedDocument<Booking>;
 
@@ -118,3 +122,22 @@ BookingSchema.index({ 'stay.checkIn': 1, 'stay.checkOut': 1 });
 BookingSchema.virtual('billing.pendingAmount').get(function () {
   return this.billing.totalAmount - this.billing.amountReceived;
 });
+
+// El dinero se guarda siempre en múltiplos de 100 COP (en Colombia no se usan
+// centavos: 556.874 → 556.800). Cubre altas, ediciones y pagos por cualquier
+// vía que pase por el modelo. Se muta en el sitio: billing es un subdocumento
+// de mongoose y no se puede copiar con spread
+BookingSchema.pre('save', function () {
+  if (this.billing) applyBillingCop(this.billing);
+});
+
+function roundUpdate(this: {
+  getUpdate(): unknown;
+  setUpdate(u: unknown): void;
+}) {
+  this.setUpdate(roundBillingUpdateCop(this.getUpdate()));
+}
+
+BookingSchema.pre('findOneAndUpdate', roundUpdate);
+BookingSchema.pre('updateOne', roundUpdate);
+BookingSchema.pre('updateMany', roundUpdate);

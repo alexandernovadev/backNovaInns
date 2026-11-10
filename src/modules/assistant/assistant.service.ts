@@ -10,6 +10,8 @@ import {
   BOOKING_EXTRACTION_PROMPT,
   BOOKING_EXTRACTION_SCHEMA,
 } from './booking-extraction.prompt';
+import { roundBillingCop } from '../../shared/money.util';
+import type { BillingAmounts } from '../../shared/money.util';
 
 @Injectable()
 export class AssistantService {
@@ -80,21 +82,10 @@ export class AssistantService {
       booking.observations = booking.observations.replace(/\\n/g, '\n');
 
     // totalAmount se calcula aquí (basePrice + extras): el modelo a veces copia
-    // el total de la plataforma, y este número alimenta los totales de la app
-    const billing = booking.billing as
-      | {
-          basePrice?: number;
-          totalAmount?: number;
-          extraServices?: { price?: number; quantity?: number }[];
-        }
-      | undefined;
-    if (billing && typeof billing.basePrice === 'number') {
-      const extras = (billing.extraServices ?? []).reduce(
-        (sum, e) => sum + (e.price ?? 0) * (e.quantity ?? 1),
-        0,
-      );
-      billing.totalAmount = billing.basePrice + extras;
-    }
+    // el total de la plataforma, y este número alimenta los totales de la app.
+    // Además todo el dinero se trunca a múltiplos de 100 COP (556.874 → 556.800)
+    const billing = booking.billing as BillingAmounts | undefined;
+    if (billing) booking.billing = roundBillingCop(billing);
 
     return {
       booking,

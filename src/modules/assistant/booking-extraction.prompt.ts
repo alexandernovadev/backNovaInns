@@ -5,7 +5,7 @@ export const BOOKING_EXTRACTION_PROMPT = `Lees screenshots de reservas de Bookin
 
 General:
 - Usa solo lo que se ve. Lo que no aparezca va vacío ("" o 0); nunca inventes.
-- Fechas YYYY-MM-DD. Montos en pesos como entero (COP 471,240 → 471240).
+- Fechas YYYY-MM-DD. Montos en pesos como entero y en múltiplos de 100, sin centavos (COP 471,240 → 471200).
 - stay.status "PENDIENTE"; billing: amountReceived 0, paymentMethod "None", status "FALTA PAGO", salvo que la imagen muestre que ya se le pagó al anfitrión.
 - totalAmount = basePrice + extras (price × quantity); NO es el total que muestra la plataforma. extraServices solo si hay parqueadero o lavandería cobrados aparte.
 - País: countryCode ISO de 2 letras y countryName en español. Departamento y ciudad solo si aparecen.

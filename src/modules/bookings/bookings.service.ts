@@ -3,6 +3,8 @@ import { InjectModel } from '@nestjs/mongoose';
 import { QueryFilter, Model } from 'mongoose';
 import { Booking, BookingDocument } from './schemas/booking.schema';
 import { paginate } from '../../shared/pagination.util';
+import { roundBillingCop, roundCopDown } from '../../shared/money.util';
+import type { BillingAmounts } from '../../shared/money.util';
 
 export interface BookingFilters {
   search?: string;
@@ -14,6 +16,14 @@ export interface BookingFilters {
   toDate?: string;
 }
 
+// El dinero entra siempre en múltiplos de 100 COP (en Colombia no se usan
+// centavos: 556.874 → 556.800). El schema lo repite por seguridad
+function roundPayload(data: any): any {
+  const d = data as { billing?: BillingAmounts } | undefined;
+  if (d?.billing) d.billing = roundBillingCop(d.billing);
+  return data;
+}
+
 @Injectable()
 export class BookingsService {
   constructor(
@@ -21,7 +31,7 @@ export class BookingsService {
   ) {}
 
   async create(data: any): Promise<BookingDocument> {
-    return new this.bookingModel(data).save();
+    return new this.bookingModel(roundPayload(data)).save();
   }
 
   async findAll(
@@ -114,7 +124,7 @@ export class BookingsService {
   async update(id: string, data: any): Promise<BookingDocument> {
     const booking = await this.bookingModel.findByIdAndUpdate(
       id,
-      { $set: data },
+      { $set: roundPayload(data) },
       { returnDocument: 'after' },
     );
     if (!booking) throw new NotFoundException('Reserva no encontrada');
@@ -151,7 +161,8 @@ export class BookingsService {
       .populate('apartmentId', 'internalName status');
     if (!booking) throw new NotFoundException('Reserva no encontrada');
 
-    booking.billing.amountReceived += amount;
+    // Pagos también en múltiplos de 100 COP
+    booking.billing.amountReceived += roundCopDown(amount);
 
     if (booking.billing.amountReceived >= booking.billing.totalAmount) {
       booking.billing.status = 'PAGADO';
