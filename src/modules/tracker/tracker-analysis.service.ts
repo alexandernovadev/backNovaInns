@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { GoogleGenAI } from '@google/genai';
 import { ProviderResult } from './providers/provider.interface';
 import { OurReference, TrackerStats } from './tracker.types';
+import { timeoutSeconds, withTimeout } from '../../shared/timeout.util';
 
 export interface TrackerAnalysis {
   summary: string;
@@ -75,6 +76,12 @@ export class TrackerAnalysisService {
 
   constructor(private readonly config: ConfigService) {}
 
+  // Deadline de cada llamada a Gemini: sin esto un create colgado deja el
+  // request pendiente para siempre
+  private geminiTimeout(): number {
+    return timeoutSeconds(this.config.get<string>('GEMINI_TIMEOUT_MS'), 60);
+  }
+
   private gemini(): GoogleGenAI | null {
     const apiKey = this.config.get<string>('GEMINI_API_KEY');
     if (!apiKey) return null;
@@ -96,18 +103,22 @@ export class TrackerAnalysisService {
       'gemini-3.5-flash-lite';
 
     try {
-      const interaction = await client.interactions.create({
-        model,
-        system_instruction: ANALYSIS_PROMPT,
-        input: [{ type: 'text', text: this.table(payload) }],
-        response_format: {
-          type: 'text',
-          mime_type: 'application/json',
-          schema: ANALYSIS_SCHEMA,
-        },
-        generation_config: { thinking_level: 'minimal' },
-        store: false,
-      });
+      const interaction = await withTimeout(
+        client.interactions.create({
+          model,
+          system_instruction: ANALYSIS_PROMPT,
+          input: [{ type: 'text', text: this.table(payload) }],
+          response_format: {
+            type: 'text',
+            mime_type: 'application/json',
+            schema: ANALYSIS_SCHEMA,
+          },
+          generation_config: { thinking_level: 'minimal' },
+          store: false,
+        }),
+        this.geminiTimeout(),
+        'El análisis del mercado',
+      );
 
       const raw = 'output_text' in interaction ? interaction.output_text : '';
       const parsed = JSON.parse(raw ?? '') as TrackerAnalysis;
@@ -322,13 +333,17 @@ Reglas:
       .join('\n');
 
     try {
-      const interaction = await client.interactions.create({
-        model,
-        system_instruction: systemPrompt,
-        input: [{ type: 'text', text: promptText }],
-        generation_config: { thinking_level: 'minimal' },
-        store: false,
-      });
+      const interaction = await withTimeout(
+        client.interactions.create({
+          model,
+          system_instruction: systemPrompt,
+          input: [{ type: 'text', text: promptText }],
+          generation_config: { thinking_level: 'minimal' },
+          store: false,
+        }),
+        this.geminiTimeout(),
+        'El chat del tracker',
+      );
       const reply =
         ('output_text' in interaction && interaction.output_text?.trim()) ||
         'No pude generar respuesta con el contexto actual.';

@@ -132,6 +132,9 @@ class ProposalError extends Error {}
 @Injectable()
 export class NovaAiProposals {
   private readonly models: Record<CollectionName, Model<any>>;
+  // Nombres de apartamento en caché (ver apartmentNames)
+  private static readonly NAMES_TTL_MS = 30_000;
+  private namesCache: { at: number; map: Map<string, string> } | null = null;
 
   constructor(
     @InjectConnection() private readonly connection: Connection,
@@ -376,9 +379,14 @@ export class NovaAiProposals {
     // Cualquier error inesperado deja la propuesta como fallida, nunca como
     // "confirmed" sin haberse aplicado
     try {
-      // 1. Nada cambió desde la propuesta (si cambió, no se pisa)
+      // 1. Nada cambió desde la propuesta (si cambió, no se pisa). Una sola
+      // lectura para todos los targets: antes era un findOne por target (hasta 20)
+      const ids = action.targets.map((t) => new ObjectId(t.id));
+      const existing = await col.find({ _id: { $in: ids } }).toArray();
+      const byId = new Map(existing.map((d) => [String(d._id), d]));
+
       for (const t of action.targets) {
-        const current = await col.findOne({ _id: new ObjectId(t.id) });
+        const current = byId.get(String(t.id));
         if (action.type === 'create') {
           if (current) return fail(`"${t.label}" ya existe.`);
           continue;
@@ -392,6 +400,8 @@ export class NovaAiProposals {
       }
 
       // 2. Ejecutar. El filtro por updatedAt evita pisar un cambio que llegue justo ahora
+      const written: ActionTarget[] = [];
+      const names = await this.apartmentNames();
       for (const t of action.targets) {
         try {
           // before puede faltar: Mongoose no guarda objetos vacíos (create)
@@ -404,12 +414,7 @@ export class NovaAiProposals {
               _id: new ObjectId(t.id),
               apartmentId,
             });
-            t.after = await col.findOne({ _id: new ObjectId(t.id) });
-            t.label = this.label(
-              'bookings',
-              t.after!,
-              await this.apartmentNames(),
-            );
+            written.push(t);
           } else if (action.type === 'delete') {
             const r = await col.deleteOne(filter);
             if (!r.deletedCount)
@@ -424,12 +429,25 @@ export class NovaAiProposals {
             });
             if (!r.matchedCount)
               return fail(`"${t.label}" cambió justo antes de guardarla.`);
-            t.after = await col.findOne({ _id: new ObjectId(t.id) });
+            written.push(t);
           }
         } catch (err) {
           return fail(
             `Error al guardar "${t.label}": ${(err as Error).message}`,
           );
+        }
+      }
+
+      // 3. Releer lo escrito en bloque (foto real del después, con casts y defaults)
+      if (written.length) {
+        const after = await col
+          .find({ _id: { $in: written.map((t) => new ObjectId(t.id)) } })
+          .toArray();
+        const afterById = new Map(after.map((d) => [String(d._id), d]));
+        for (const t of written) {
+          t.after = afterById.get(String(t.id)) ?? null;
+          if (action.type === 'create' && t.after)
+            t.label = this.label('bookings', t.after, names);
         }
       }
     } catch (err) {
@@ -498,8 +516,14 @@ export class NovaAiProposals {
 
     const col = this.connection.db!.collection(action.targetCollection);
     const drift: { label: string; fields: string[] }[] = [];
+    // Comprobación de deriva en una sola lectura (antes era un findOne por target)
+    const currents = await col
+      .find({ _id: { $in: action.targets.map((t) => new ObjectId(t.id)) } })
+      .toArray();
+    const currentById = new Map(currents.map((d) => [String(d._id), d]));
+
     for (const t of action.targets) {
-      const current = await col.findOne({ _id: new ObjectId(t.id) });
+      const current = currentById.get(String(t.id)) ?? null;
       if (action.type === 'create') {
         if (!current)
           throw conflict(
@@ -544,11 +568,18 @@ export class NovaAiProposals {
 
     const undoTargets: ActionTarget[] = [];
     try {
+      // Estado actual en una sola lectura (antes era 2 o 3 findOne por target)
+      const pre = await col
+        .find({ _id: { $in: claimed.targets.map((t) => new ObjectId(t.id)) } })
+        .toArray();
+      const preById = new Map(pre.map((d) => [String(d._id), d]));
+      const restored: ActionTarget[] = [];
+
       for (const t of claimed.targets) {
         const _id = new ObjectId(t.id);
+        const current = preById.get(String(t.id)) ?? null;
         if (claimed.type === 'create') {
           // Deshacer una creación = eliminar la reserva creada
-          const current = await col.findOne({ _id });
           await col.deleteOne({ _id });
           undoTargets.push({
             id: t.id,
@@ -560,15 +591,16 @@ export class NovaAiProposals {
         } else if (claimed.type === 'delete') {
           // Vuelve el documento completo, con el mismo _id
           await col.insertOne({ ...t.before, _id });
-          undoTargets.push({
+          const target: ActionTarget = {
             id: t.id,
             label: t.label,
             before: {},
             changes: [],
-            after: await col.findOne({ _id }),
-          });
+            after: null,
+          };
+          undoTargets.push(target);
+          restored.push(target);
         } else {
-          const current = (await col.findOne({ _id }))!;
           await col.updateOne(
             { _id },
             {
@@ -580,18 +612,29 @@ export class NovaAiProposals {
               },
             },
           );
-          undoTargets.push({
+          const target: ActionTarget = {
             id: t.id,
             label: t.label,
-            before: current,
+            before: current ?? {},
             changes: t.changes.map((c) => ({
               field: c.field,
-              before: this.read(current, c.field),
+              before: this.read(current ?? {}, c.field),
               after: c.before,
             })),
-            after: await col.findOne({ _id }),
-          });
+            after: null,
+          };
+          undoTargets.push(target);
+          restored.push(target);
         }
+      }
+
+      // Foto final, en bloque también
+      if (restored.length) {
+        const post = await col
+          .find({ _id: { $in: restored.map((t) => new ObjectId(t.id)) } })
+          .toArray();
+        const postById = new Map(post.map((d) => [String(d._id), d]));
+        for (const t of restored) t.after = postById.get(String(t.id)) ?? null;
       }
     } catch (err) {
       // Si no se alcanzó a restaurar nada, el cambio sigue aplicado
@@ -805,11 +848,21 @@ export class NovaAiProposals {
   }
 
   private async apartmentNames() {
+    // Se pide en casi cada tarjeta (crear, editar, historial, duplicados): 30 s
+    // de caché evitan escanear apartamentos en cada uno de esos pasos
+    const hit = this.namesCache;
+    if (hit && Date.now() - hit.at < NovaAiProposals.NAMES_TTL_MS)
+      return hit.map;
+
     const apts = await this.connection
       .db!.collection('apartments')
       .find({}, { projection: { internalName: 1 } })
       .toArray();
-    return new Map(apts.map((a) => [String(a._id), a.internalName as string]));
+    const map = new Map<string, string>(
+      apts.map((a) => [String(a._id), a.internalName as string]),
+    );
+    this.namesCache = { at: Date.now(), map };
+    return map;
   }
 
   private label(

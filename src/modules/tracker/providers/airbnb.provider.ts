@@ -89,6 +89,10 @@ export class AirbnbProvider implements TrackerProvider {
 
   constructor(private readonly browser: TrackerBrowser) {}
 
+  keepAlive(): void {
+    this.browser.keepAlive();
+  }
+
   async quote(
     input: QuoteInput,
     competitor: CompetitorLike,

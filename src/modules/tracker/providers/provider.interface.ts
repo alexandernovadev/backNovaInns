@@ -43,5 +43,7 @@ export interface ProviderResult {
 export interface TrackerProvider {
   readonly platform: string;
   quote(input: QuoteInput, competitor: CompetitorLike): Promise<ProviderResult>;
+  /** deja el navegador vivo un rato en vez de cerrarlo (arrancar Chromium cuesta) */
+  keepAlive?(): void;
   dispose?(): Promise<void>;
 }

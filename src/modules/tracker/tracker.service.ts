@@ -67,6 +67,47 @@ export class TrackerService {
     const input = this.input(dto);
     const mode = this.mode();
 
+    // cacheMinutes estaba declarado y nunca se usaba: una cotización live abre
+    // Chromium y tarda segundos, así que la misma consulta reciente se reutiliza
+    if (mode === 'live' && !dto.refresh) {
+      const since = new Date(
+        Date.now() - TRACKER_DEFAULTS.cacheMinutes * 60_000,
+      );
+      const hit = (await this.quoteModel
+        .findOne({
+          mode,
+          'input.checkIn': input.checkIn,
+          'input.checkOut': input.checkOut,
+          'input.guests': input.guests,
+          'input.nights': input.nights,
+          createdAt: { $gte: since },
+        })
+        .sort({ createdAt: -1 })
+        .lean()) as (TrackerQuote & { _id: unknown; createdAt?: Date }) | null;
+      if (hit) {
+        this.logger.debug(
+          `Cotización en caché (${input.checkIn}→${input.checkOut})`,
+        );
+        // El schema guarda estos campos como Mixed: se devuelven tal cual
+        const cached = hit as unknown as Record<string, unknown> & {
+          _id: unknown;
+          createdAt?: Date;
+        };
+        return {
+          id: String(cached._id),
+          mode: cached.mode,
+          input: cached.input,
+          results: cached.results,
+          stats: cached.stats,
+          ourReference: cached.ourReference,
+          analysis: cached.analysis,
+          durationMs: cached.durationMs,
+          generatedAt: (cached.createdAt ?? new Date()).toISOString(),
+          cached: true,
+        };
+      }
+    }
+
     let competitors: CompetitorLike[];
     if (mode === 'demo') {
       const approved = await this.competitors.findApproved();
@@ -91,16 +132,20 @@ export class TrackerService {
       );
     } finally {
       if (mode === 'live') {
-        await this.registry.get('Airbnb').dispose?.();
-        await this.registry.get('Booking').dispose?.();
+        // Chromium se queda caliente y se cierra solo tras 2 min sin uso
+        this.registry.get('Airbnb').keepAlive?.();
+        this.registry.get('Booking').keepAlive?.();
       }
     }
 
-    await this.saveRaw(results);
-    await this.touchCompetitors(results);
-
+    // Guardar el crudo, marcar la visita y leer nuestra referencia no dependen
+    // entre sí: se hacen a la vez
     const stats = this.buildStats(input, results);
-    const ourReference = await this.ourReference();
+    const [ourReference] = await Promise.all([
+      this.ourReference(),
+      this.saveRaw(results),
+      this.touchCompetitors(results),
+    ]);
     const analysis = await this.analysis.analyze({
       input,
       stats,
@@ -128,6 +173,7 @@ export class TrackerService {
       analysis,
       durationMs: Date.now() - started,
       generatedAt: new Date().toISOString(),
+      cached: false,
     };
   }
 

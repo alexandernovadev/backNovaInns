@@ -59,6 +59,10 @@ export class BookingProvider implements TrackerProvider {
 
   constructor(private readonly browser: TrackerBrowser) {}
 
+  keepAlive(): void {
+    this.browser.keepAlive();
+  }
+
   async search(input: {
     checkIn: string;
     checkOut: string;
@@ -316,7 +320,8 @@ export class BookingProvider implements TrackerProvider {
       };
     } finally {
       await context.close();
-      await this.browser.dispose();
+      // No se cierra el navegador: es compartido con las cotizaciones en curso
+      this.browser.keepAlive();
     }
   }
 
