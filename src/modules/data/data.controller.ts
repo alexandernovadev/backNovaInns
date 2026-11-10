@@ -35,6 +35,14 @@ export class DataController {
     return this.dataService.clear(model);
   }
 
+  // ── ARREGLAR PRECIOS (herramienta temporal, luego se quita) ──
+  @Post('fix-prices')
+  @HttpCode(200)
+  fixPrices(@Req() req: Request) {
+    this.requireSuperAdmin(req);
+    return this.dataService.fixBookingPrices();
+  }
+
   private requireSuperAdmin(req: Request) {
     const { role } = req.user as { role: Role };
     if (role !== Role.SUPER_ADMIN) {
