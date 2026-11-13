@@ -96,7 +96,7 @@ export class Booking {
       },
       status: {
         type: String,
-        enum: ['PAGADO', 'FALTA PAGO', 'NO SHOW'],
+        enum: ['PAGADO', 'FALTA PAGO'],
         default: 'FALTA PAGO',
       },
     },

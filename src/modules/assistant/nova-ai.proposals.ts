@@ -17,6 +17,7 @@ import {
 import { COLLECTIONS, ToolRun } from './nova-ai.tools';
 import { roundBillingCop, roundMoneyValueCop } from '../../shared/money.util';
 import type { BillingAmounts } from '../../shared/money.util';
+import { BOOKING_EXTRACTION_SCHEMA } from './booking-extraction.prompt';
 
 const { BSON } = mongo;
 const { EJSON, ObjectId } = BSON;
@@ -91,6 +92,25 @@ export const NOVA_AI_PROPOSAL_TOOLS = [
       required: ['collection', 'ids', 'summary'],
     },
   },
+  {
+    type: 'function' as const,
+    name: 'propose_create',
+    description:
+      'Propone crear una reserva nueva. NO crea nada: el usuario ve una tarjeta, elige/confirma el apartamento y decide.',
+    parameters: {
+      type: 'object',
+      properties: {
+        // Misma forma que la reserva leída de un screenshot
+        booking: BOOKING_EXTRACTION_SCHEMA,
+        apartmentId: {
+          type: 'string',
+          description:
+            '_id del apartamento (búscalo antes con find en apartments). Vacío si el dueño no lo dijo o no está claro: lo elige en la tarjeta.',
+        },
+      },
+      required: ['booking', 'apartmentId'],
+    },
+  },
 ];
 
 // Lo que ve el front en la tarjeta
@@ -102,6 +122,8 @@ export interface ActionCard {
   summary: string;
   warnings: string[];
   expiresAt: Date;
+  // create: apartamento sugerido (el select de la tarjeta arranca con este)
+  apartmentId?: string | null;
   targets: {
     id: string;
     label: string;
@@ -157,6 +179,8 @@ export class NovaAiProposals {
     request: string,
     userId: string | null,
   ): Promise<{ run: ToolRun; card?: ActionCard }> {
+    if (name === 'propose_create')
+      return this.proposeCreateFromChat(args, request, userId);
     const collection = String(args.collection ?? '');
     const type = name === 'propose_delete' ? 'delete' : 'update';
     const summary = `${collection || '?'} (propuesta de ${type === 'delete' ? 'eliminación' : 'edición'})`;
@@ -216,6 +240,26 @@ export class NovaAiProposals {
     }
   }
 
+  // Tarjetas de una conversación guardada, con el estado actual de cada
+  // propuesta. Una pendiente que ya venció se muestra como vencida
+  async cards(ids: string[]): Promise<Map<string, ActionCard>> {
+    const valid = ids.filter((id) => ObjectId.isValid(id));
+    if (!valid.length) return new Map();
+    const [actions, names] = await Promise.all([
+      this.actionModel.find({ _id: { $in: valid } }),
+      this.apartmentNames(),
+    ]);
+    const now = new Date();
+    return new Map(
+      actions.map((a) => {
+        const card = this.toCard(a, names);
+        if (card.status === 'pending' && a.expiresAt < now)
+          card.status = 'expired';
+        return [card.id, card];
+      }),
+    );
+  }
+
   async cancel(id: string) {
     const action = ObjectId.isValid(id)
       ? await this.actionModel.findById(id)
@@ -228,12 +272,53 @@ export class NovaAiProposals {
     return { id: String(action._id), status: action.status };
   }
 
-  // Reserva leída de un screenshot → propuesta "create". El _id se reserva ya,
-  // para que confirmar y deshacer apunten siempre al mismo documento.
+  // Reserva dictada en el chat → misma propuesta "create" que la del screenshot.
+  // Si la reserva no es válida, el error vuelve al modelo para que la corrija
+  private async proposeCreateFromChat(
+    args: Record<string, unknown>,
+    request: string,
+    userId: string | null,
+  ): Promise<{ run: ToolRun; card?: ActionCard }> {
+    const summary = 'bookings (propuesta de creación)';
+    try {
+      const raw = args.booking;
+      const booking = (typeof raw === 'string' ? JSON.parse(raw) : raw) as
+        Record<string, any> | undefined;
+      if (!booking || typeof booking !== 'object')
+        throw new ProposalError('Falta booking con los datos de la reserva');
+      if (typeof booking.observations === 'string')
+        booking.observations = booking.observations.replace(/\\n/g, '\n');
+      const card = await this.proposeCreate(booking, request, userId, {
+        apartmentId: String(args.apartmentId ?? ''),
+      });
+      return {
+        run: {
+          ok: true,
+          summary,
+          result: JSON.stringify({
+            proposal_id: card.id,
+            reserva: card.targets[0]?.label,
+            avisos: card.warnings,
+            nota: 'Propuesta lista. El usuario la confirma o la cancela en una tarjeta. NO digas que ya se hizo; dile que revise la tarjeta.',
+          }),
+        },
+        card,
+      };
+    } catch (err) {
+      return {
+        run: { ok: false, summary, result: `Error: ${(err as Error).message}` },
+      };
+    }
+  }
+
+  // Reserva leída de un screenshot (o dictada en el chat) → propuesta "create".
+  // El _id se reserva ya, para que confirmar y deshacer apunten siempre al mismo
+  // documento. options.apartmentId: sugerencia; el definitivo sale al confirmar
   async proposeCreate(
     draft: Record<string, any>,
     request: string,
     userId: string | null,
+    options: { apartmentId?: string } = {},
   ): Promise<ActionCard> {
     const { _id: _ignored, apartmentId: _apt, ...rest } = draft ?? {};
     // Montos en múltiplos de 100 COP (sin centavos) antes de mostrar la tarjeta
@@ -263,7 +348,22 @@ export class NovaAiProposals {
       });
     }
     const plain = doc.toObject({ depopulate: true });
+    if (!(plain.stay?.checkOut > plain.stay?.checkIn))
+      throw new ConflictException({
+        statusCode: 409,
+        status: 'failed',
+        message:
+          'La reserva leída no es válida: la salida debe ser posterior a la entrada',
+      });
     delete plain.apartmentId;
+    // Apartamento sugerido: solo si existe; si no, se elige en la tarjeta
+    if (options.apartmentId) {
+      try {
+        plain.apartmentId = await this.checkApartment(options.apartmentId);
+      } catch {
+        /* sin sugerencia */
+      }
+    }
 
     const names = await this.apartmentNames();
     const label = this.label('bookings', plain, names).replace(
@@ -946,6 +1046,9 @@ export class NovaAiProposals {
       summary: action.summary,
       warnings: action.warnings ?? [],
       expiresAt: action.expiresAt,
+      ...(action.type === 'create' && {
+        apartmentId: (action.targets[0]?.draft?.apartmentId as string) ?? null,
+      }),
       targets: action.targets.map((t) => ({
         id: t.id,
         label: t.label,

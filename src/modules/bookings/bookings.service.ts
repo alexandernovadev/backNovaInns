@@ -201,11 +201,8 @@ export class BookingsService {
   // Resumen financiero: total esperado, recibido y pendiente
   async financialSummary(query: BookingFilters = {}) {
     // Mismos filtros que la lista. apartmentId se guarda como string (el schema
-    // lo resuelve como Mixed), así que no se castea a ObjectId. NO SHOW nunca suma.
+    // lo resuelve como Mixed), así que no se castea a ObjectId.
     const match = this.buildFilter(query);
-    match['billing.status'] = query.status
-      ? { $eq: query.status, $ne: 'NO SHOW' }
-      : { $ne: 'NO SHOW' };
     const result = await this.bookingModel.aggregate([
       { $match: match },
       {

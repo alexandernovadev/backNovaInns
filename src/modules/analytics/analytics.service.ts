@@ -70,7 +70,7 @@ export class AnalyticsService {
     return { 'stay.checkIn': f };
   }
 
-  // Filtro común: fechas + apartamento, sin NO SHOW en ninguna métrica.
+  // Filtro común: fechas + apartamento.
   // apartmentId se guarda como string (el schema lo resuelve como Mixed), no se castea.
   private baseMatch(
     from?: string,
@@ -80,7 +80,6 @@ export class AnalyticsService {
     return {
       ...this.dateMatch(from, to),
       ...(apartmentId ? { apartmentId } : {}),
-      'billing.status': { $ne: 'NO SHOW' },
     };
   }
 
@@ -362,10 +361,7 @@ export class AnalyticsService {
     const todayKey = now.toISOString().slice(0, 10);
     const firsts = await this.bookingModel.aggregate([
       {
-        $match: {
-          apartmentId: { $in: aptIds },
-          'billing.status': { $ne: 'NO SHOW' },
-        },
+        $match: { apartmentId: { $in: aptIds } },
       },
       { $group: { _id: '$apartmentId', first: { $min: '$stay.checkIn' } } },
     ]);
@@ -380,7 +376,6 @@ export class AnalyticsService {
           apartmentId: { $in: aptIds },
           'stay.checkIn': { $lt: tDate },
           'stay.checkOut': { $gt: fDate },
-          'billing.status': { $ne: 'NO SHOW' },
         },
       },
       {

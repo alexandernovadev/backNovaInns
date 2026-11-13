@@ -92,7 +92,7 @@ export const BOOKING_EXTRACTION_SCHEMA = {
           type: 'string',
           enum: ['Efectivo', 'Nequi', 'Bancolombia', 'None'],
         },
-        status: { type: 'string', enum: ['PAGADO', 'FALTA PAGO', 'NO SHOW'] },
+        status: { type: 'string', enum: ['PAGADO', 'FALTA PAGO'] },
       },
       required: [
         'basePrice',

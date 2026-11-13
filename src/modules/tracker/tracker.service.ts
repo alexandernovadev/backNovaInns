@@ -298,10 +298,7 @@ export class TrackerService {
   private async ourReference() {
     const since = new Date(Date.now() - 180 * 24 * 60 * 60 * 1000);
     const rows = await this.bookingModel
-      .find({
-        'stay.checkIn': { $gte: since },
-        'billing.status': { $ne: 'NO SHOW' },
-      })
+      .find({ 'stay.checkIn': { $gte: since } })
       .select('stay.checkIn stay.checkOut billing.totalAmount')
       .lean();
 
